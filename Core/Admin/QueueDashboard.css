@@ -1,0 +1,368 @@
+* {
+    box-sizing: border-box;
+}
+
+body {
+    margin: 0;
+    color: #1f2937;
+    background: #f5f5f5;
+    font-family: Arial, sans-serif;
+    font-size: 14px;
+    line-height: 1.4;
+}
+
+header {
+    padding: 18px 24px;
+    color: #ffffff;
+    background: #1f2937;
+}
+
+h1 {
+    margin: 0;
+    font-size: 20px;
+}
+
+main {
+    padding: 20px;
+}
+
+.panel {
+    margin-bottom: 16px;
+    padding: 16px;
+    background: #ffffff;
+    border: 1px solid #d1d5db;
+}
+
+.filter-grid {
+    display: grid;
+    grid-template-columns: minmax(240px, 2fr) repeat(4, minmax(150px, 1fr));
+    gap: 12px;
+    align-items: end;
+}
+
+.field label {
+    display: block;
+    margin-bottom: 5px;
+    color: #4b5563;
+    font-size: 12px;
+}
+
+input,
+select,
+button,
+.button-link {
+    min-height: 36px;
+    padding: 7px 10px;
+    border-radius: 4px;
+    font: inherit;
+}
+
+input,
+select {
+    width: 100%;
+    color: #111827;
+    background: #ffffff;
+    border: 1px solid #9ca3af;
+}
+
+input[type="checkbox"] {
+    width: 16px;
+    height: 16px;
+    min-height: 0;
+    margin: 0;
+    padding: 0;
+    cursor: pointer;
+}
+
+button,
+.button-link {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    color: #ffffff;
+    background: #1f2937;
+    border: 0;
+    text-decoration: none;
+    cursor: pointer;
+}
+
+.filter-actions {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: 8px;
+    margin-top: 14px;
+}
+
+.filter-pager {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    margin-left: auto;
+    color: #6b7280;
+}
+
+.filter-pager select {
+    width: auto;
+}
+
+.filter-pager .disabled {
+    color: #9ca3af;
+    background: #f3f4f6;
+    cursor: default;
+}
+
+.button-link.secondary {
+    color: #111827;
+    background: #e5e7eb;
+}
+
+.danger {
+    background: #b91c1c;
+}
+
+.actions-row {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    justify-content: flex-end;
+    gap: 12px 16px;
+    margin-bottom: 12px;
+}
+
+.summary {
+    margin: 0;
+    color: #6b7280;
+}
+
+.bulk-bar {
+    display: none;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: 8px;
+    margin-bottom: 12px;
+    padding: 10px 14px;
+    color: #4b5563;
+    background: #eef2ff;
+    border: 1px solid #c7d2fe;
+}
+
+.bulk-bar.is-visible {
+    display: flex;
+}
+
+.bulk-title {
+    white-space: nowrap;
+}
+
+.selected-count {
+    margin-left: auto;
+    color: #4338ca;
+    white-space: nowrap;
+    font-size: 12px;
+}
+
+.flash {
+    margin-bottom: 16px;
+    padding: 10px 14px;
+    border: 1px solid;
+}
+
+.flash.ok {
+    color: #166534;
+    background: #dcfce7;
+    border-color: #86efac;
+}
+
+.flash.error {
+    color: #991b1b;
+    background: #fee2e2;
+    border-color: #fca5a5;
+}
+
+.table-wrap {
+    overflow-x: auto;
+    background: #ffffff;
+    border: 1px solid #d1d5db;
+}
+
+table {
+    width: 100%;
+    min-width: 1200px;
+    border-collapse: collapse;
+}
+
+th,
+td {
+    padding: 10px;
+    text-align: left;
+    vertical-align: top;
+    border-bottom: 1px solid #e5e7eb;
+}
+
+th {
+    color: #4b5563;
+    background: #f3f4f6;
+    font-size: 12px;
+}
+
+td.id {
+    font-weight: bold;
+}
+
+th.select,
+td.select {
+    width: 34px;
+    padding-right: 0;
+    text-align: center;
+}
+
+.badge {
+    display: inline-block;
+    padding: 3px 8px;
+    color: #ffffff;
+    border-radius: 12px;
+    font-size: 12px;
+}
+
+.date {
+    color: #4b5563;
+    white-space: nowrap;
+    font-size: 12px;
+}
+
+.hook {
+    min-width: 110px;
+    color: #1d4ed8;
+    white-space: nowrap;
+    font-family: monospace;
+    font-size: 12px;
+}
+
+/* Столбцы URL сжимаются последними: перенос только по необходимости, не посимвольно */
+.url {
+    min-width: 240px;
+    max-width: 340px;
+    color: #4b5563;
+    word-break: normal;
+    overflow-wrap: anywhere;
+    font-size: 12px;
+}
+
+.error-text {
+    min-width: 180px;
+    max-width: 320px;
+    margin: 0;
+    color: #b91c1c;
+    white-space: pre-wrap;
+    word-break: break-word;
+    font-family: inherit;
+    font-size: 12px;
+}
+
+/* Столбец data забирает всю свободную ширину таблицы — JSON видно целиком */
+td.data-cell {
+    width: 100%;
+    min-width: 420px;
+}
+
+details.data summary {
+    color: #4b5563;
+    cursor: pointer;
+}
+
+details.data pre {
+    max-height: 400px;
+    margin: 8px 0 0;
+    padding: 10px;
+    overflow: auto;
+    color: #e5e7eb;
+    background: #111827;
+    /* Без переносов: длинные строки уезжают в свой горизонтальный скролл */
+    white-space: pre;
+    font-size: 12px;
+}
+
+.jobs-form,
+.page-size-form {
+    margin: 0;
+}
+
+mark {
+    color: #111827;
+    background: #fde047;
+}
+
+.empty {
+    padding: 40px;
+    color: #6b7280;
+    text-align: center;
+}
+
+.pager {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    margin-top: 16px;
+}
+
+.pager a,
+.pager span {
+    padding: 7px 12px;
+    color: #111827;
+    background: #e5e7eb;
+    border-radius: 4px;
+    text-decoration: none;
+}
+
+.pager .disabled {
+    color: #9ca3af;
+    background: #f3f4f6;
+}
+
+.page-size-form {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    margin-left: 12px;
+    color: #6b7280;
+}
+
+.page-size-form select {
+    width: auto;
+}
+
+@media (max-width: 1100px) {
+    .filter-grid {
+        grid-template-columns: repeat(2, minmax(180px, 1fr));
+    }
+}
+
+@media (max-width: 650px) {
+    main {
+        padding: 12px;
+    }
+
+    .filter-grid {
+        grid-template-columns: 1fr;
+    }
+
+    .actions-row,
+    .pager {
+        align-items: stretch;
+        flex-direction: column;
+    }
+
+    .selected-count {
+        margin-left: 0;
+    }
+
+    .page-size-form {
+        margin-left: 0;
+    }
+
+    .filter-pager {
+        margin-left: 0;
+    }
+}
+

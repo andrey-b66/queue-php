@@ -1,0 +1,53 @@
+<?php
+
+require __DIR__ . '/../{{VENDOR}}/autoload.php';
+
+use Queue\Hook\HookExecutor;
+use Queue\Core\Repository\SqliteRepository;
+use Queue\Core\Service\QueueService;
+
+// --- Защита от параллельного запуска ---
+$lockFile = __DIR__ . '/../storage/locks/cron-queue-worker.lock';
+if (!is_dir(dirname($lockFile))) {
+    mkdir(dirname($lockFile), 0755, true);
+}
+$lock = fopen($lockFile, 'c');
+if ($lock === false || !flock($lock, LOCK_EX | LOCK_NB)) {
+    exit(0); // предыдущий воркер ещё работает — тихо выходим
+}
+
+// --- Инициализация ---
+$service   = new QueueService(new SqliteRepository(__DIR__ . '/../storage/database/queue.sqlite'));
+$processor = new HookExecutor(__DIR__ . '/../'); // корень проекта: внутри ищется папка hooks/
+
+// --- Разбор очереди пачками, пока есть pending ---
+$batchSize = 50;
+while (true) {
+    $jobs = $service->getPending($batchSize);
+    if (empty($jobs)) {
+        break;
+    }
+
+    foreach ($jobs as $job) {
+        $error = null;
+        try {
+            $processor->handle($job); // найдёт hooks/<имя>.php и выполнит с $payload
+        } catch (\Throwable $e) {
+            error_log("Job #{$job->getId()} failed: " . $e->getMessage());
+            $error = $e->getMessage();
+        }
+
+        try {
+            $error === null
+                ? $service->markCompleted($job)
+                : $service->markFailed($job, $error);
+        } catch (\Throwable $e) {
+            // Не смогли снять задачу с pending — прерываем прогон, чтобы не зациклиться
+            error_log("Job #{$job->getId()}: не удалось обновить статус: " . $e->getMessage());
+            break 2;
+        }
+    }
+}
+
+flock($lock, LOCK_UN);
+fclose($lock);

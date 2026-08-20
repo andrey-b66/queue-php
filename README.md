@@ -32,6 +32,7 @@ vendor/integrat/queue/
 │       ├── QueueDashboard.php       # Queue\Core\Admin\QueueDashboard — логика админки
 │       └── QueueDashboard.css       # стили админки
 ├── Hook/HookExecutor.php            # Queue\Hook\HookExecutor — диспетчер файловых хуков
+├── Worker/CronQueueWorker.php      # Queue\Worker\CronQueueWorker — cron-воркер и lock-файл
 └── Installer/
     ├── Plugin.php                   # composer-плагин: разворачивает заготовки при установке
     ├── Scaffolder.php               # копирование заготовок в корень проекта
@@ -176,55 +177,24 @@ echo 'OK';
 
 require __DIR__ . '/../vendor/autoload.php';
 
-use Queue\Hook\HookExecutor;
-use Queue\Core\Repository\SqliteRepository;
-use Queue\Core\Service\QueueService;
+use Queue\Worker\CronQueueWorker;
 
-// --- Защита от параллельного запуска ---
-$lockFile = __DIR__ . '/../storage/locks/cron-queue-worker.lock';
-if (!is_dir(dirname($lockFile))) {
-    mkdir(dirname($lockFile), 0755, true);
-}
-$lock = fopen($lockFile, 'c');
-if ($lock === false || !flock($lock, LOCK_EX | LOCK_NB)) {
-    exit(0); // предыдущий воркер ещё работает — тихо выходим
-}
+$worker = new CronQueueWorker(
+    projectRoot: __DIR__ . '/../',
+    databaseFile: __DIR__ . '/../storage/database/queue.sqlite',
+    lockFile: __DIR__ . '/../storage/locks/cron-queue-worker.lock',
+    batchSize: 50,
+);
 
-// --- Инициализация ---
-$service   = new QueueService(new SqliteRepository(__DIR__ . '/../storage/database/queue.sqlite'));
-$processor = new HookExecutor(__DIR__ . '/../'); // корень проекта: внутри ищется папка hooks/
-
-// --- Разбор очереди пачками, пока есть pending ---
-$batchSize = 50;
-while (true) {
-    $jobs = $service->getPending($batchSize);
-    if (empty($jobs)) {
-        break;
-    }
-
-    foreach ($jobs as $job) {
-        $error = null;
-        try {
-            $processor->handle($job); // найдёт hooks/<имя>.php и выполнит с $payload
-        } catch (\Throwable $e) {
-            error_log("Job #{$job->getId()} failed: " . $e->getMessage());
-            $error = $e->getMessage();
-        }
-
-        try {
-            $error === null
-                ? $service->markCompleted($job)
-                : $service->markFailed($job, $error);
-        } catch (\Throwable $e) {
-            // Не смогли снять задачу с pending — прерываем прогон, чтобы не зациклиться
-            error_log("Job #{$job->getId()}: не удалось обновить статус: " . $e->getMessage());
-            break 2;
-        }
-    }
+if (!$worker->acquireLock()) {
+    exit(0); // предыдущий воркер ещё работает или lock-файл недоступен
 }
 
-flock($lock, LOCK_UN);
-fclose($lock);
+try {
+    $worker->run();
+} finally {
+    $worker->releaseLock();
+}
 ```
 
 Крон — запускать регулярно, например каждую минуту:

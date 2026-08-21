@@ -1,12 +1,12 @@
 <?php
 
-namespace Queue\Core\Repository;
+namespace Integrat\Queue\Storage;
 
-use Queue\Core\Model\Job;
+use Integrat\Queue\Job;
 use PDO;
 use PDOException;
 
-class SqliteRepository
+class SqliteJobRepository
 {
     private PDO $pdo;
 

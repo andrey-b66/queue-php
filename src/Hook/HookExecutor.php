@@ -1,8 +1,8 @@
 <?php
 
-namespace Queue\Hook;
+namespace Integrat\Queue\Hook;
 
-use Queue\Core\Model\Job;
+use Integrat\Queue\Job;
 
 /**
  * Диспетчер хуков.

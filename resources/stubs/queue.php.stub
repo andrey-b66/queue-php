@@ -2,15 +2,15 @@
 
 require __DIR__ . '/{{VENDOR}}/autoload.php';
 
-use Queue\Core\Admin\QueueDashboard;
-use Queue\Core\Repository\SqliteRepository;
-use Queue\Core\Service\QueueService;
+use Integrat\Queue\Admin\QueueDashboard;
+use Integrat\Queue\Queue;
+use Integrat\Queue\Storage\SqliteJobRepository;
 
-$service = new QueueService(
-    new SqliteRepository(__DIR__ . '/storage/database/queue.sqlite')
+$queue = new Queue(
+    new SqliteJobRepository(__DIR__ . '/storage/database/queue.sqlite')
 );
 
 // Второй аргумент — папка hooks/: из неё берётся список хуков для фильтра.
 // Третий (необязательный) — URL стилей, например '/assets/queue-dashboard.css'.
 // Без него CSS встраивается в страницу из файла пакета.
-(new QueueDashboard($service, __DIR__ . '/hooks'))->handle();
+(new QueueDashboard($queue, __DIR__ . '/hooks'))->handle();

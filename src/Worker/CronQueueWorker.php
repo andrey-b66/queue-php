@@ -2,13 +2,13 @@
 
 declare(strict_types=1);
 
-namespace Queue\Worker;
+namespace Integrat\Queue\Worker;
 
 use InvalidArgumentException;
-use Queue\Core\Model\Job;
-use Queue\Core\Repository\SqliteRepository;
-use Queue\Core\Service\QueueService;
-use Queue\Hook\HookExecutor;
+use Integrat\Queue\Hook\HookExecutor;
+use Integrat\Queue\Job;
+use Integrat\Queue\Queue;
+use Integrat\Queue\Storage\SqliteJobRepository;
 use Throwable;
 
 /**
@@ -72,25 +72,25 @@ final class CronQueueWorker
 
     public function run(): void
     {
-        $service = new QueueService(new SqliteRepository($this->databaseFile));
+        $queue = new Queue(new SqliteJobRepository($this->databaseFile));
         $processor = new HookExecutor($this->projectRoot);
 
         while (true) {
-            $jobs = $service->getPending($this->batchSize);
+            $jobs = $queue->getPending($this->batchSize);
 
             if ($jobs === []) {
                 return;
             }
 
             foreach ($jobs as $job) {
-                if (!$this->process($job, $service, $processor)) {
+                if (!$this->process($job, $queue, $processor)) {
                     return;
                 }
             }
         }
     }
 
-    private function process(Job $job, QueueService $service, HookExecutor $processor): bool
+    private function process(Job $job, Queue $queue, HookExecutor $processor): bool
     {
         $error = null;
 
@@ -103,8 +103,8 @@ final class CronQueueWorker
 
         try {
             $error === null
-                ? $service->markCompleted($job)
-                : $service->markFailed($job, $error);
+                ? $queue->markCompleted($job)
+                : $queue->markFailed($job, $error);
         } catch (Throwable $exception) {
             // Задача осталась pending — завершаем прогон, чтобы не зациклиться.
             error_log("Job #{$job->getId()}: не удалось обновить статус: " . $exception->getMessage());

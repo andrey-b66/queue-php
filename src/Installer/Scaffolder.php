@@ -2,7 +2,7 @@
 
 declare(strict_types=1);
 
-namespace Queue\Installer;
+namespace Integrat\Queue\Installer;
 
 use RuntimeException;
 

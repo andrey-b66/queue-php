@@ -1,14 +1,13 @@
 <?php
 
-namespace Queue\Core\Service;
+namespace Integrat\Queue;
 
-use Queue\Core\Model\Job;
-use Queue\Core\Repository\SqliteRepository;
+use Integrat\Queue\Storage\SqliteJobRepository;
 
-class QueueService
+class Queue
 {
     public function __construct(
-        private SqliteRepository $repository,
+        private SqliteJobRepository $repository,
     ) {
     }
 

@@ -4,7 +4,7 @@
 
 Пакет самодостаточный и переносимый: **никаких сторонних зависимостей**, только PHP 8.1+ и `ext-pdo_sqlite`. Про конкретные интеграции ничего не знает — что делать с заданием, решает твой код в хуке.
 
-Пакет ставится composer'ом (`integrat/queue`), неймспейс — `Queue\`, PSR-4 от корня пакета.
+Пакет ставится Composer'ом (`integrat/queue`). Публичные классы находятся в namespace `Integrat\Queue\`, PSR-4 указывает на каталог `src/`.
 
 ---
 
@@ -23,20 +23,22 @@
 
 ```
 vendor/integrat/queue/
-├── composer.json                    # манифест пакета: требования и PSR-4 автозагрузка
-├── Core/
-│   ├── Model/Job.php                # Queue\Core\Model\Job — задание очереди
-│   ├── Repository/SqliteRepository.php  # Queue\Core\Repository\SqliteRepository — хранилище (SQLite)
-│   ├── Service/QueueService.php     # Queue\Core\Service\QueueService — фасад очереди
-│   └── Admin/
-│       ├── QueueDashboard.php       # Queue\Core\Admin\QueueDashboard — логика админки
-│       └── QueueDashboard.css       # стили админки
-├── Hook/HookExecutor.php            # Queue\Hook\HookExecutor — диспетчер файловых хуков
-├── Worker/CronQueueWorker.php      # Queue\Worker\CronQueueWorker — cron-воркер и lock-файл
-└── Installer/
-    ├── Plugin.php                   # composer-плагин: разворачивает заготовки при установке
-    ├── Scaffolder.php               # копирование заготовок в корень проекта
-    └── stubs/                       # сами заготовки (webhook.php, воркер, хук, админка)
+├── src/
+│   ├── Job.php                      # задание очереди
+│   ├── Queue.php                    # главный публичный API
+│   ├── Storage/
+│   │   └── SqliteJobRepository.php  # хранение заданий в SQLite
+│   ├── Worker/CronQueueWorker.php   # один cron-воркер и lock-файл
+│   ├── Hook/HookExecutor.php        # диспетчер файловых хуков
+│   ├── Admin/QueueDashboard.php     # логика и HTML админки
+│   └── Installer/                   # реализация `integrat-queue install`
+├── resources/
+│   ├── QueueDashboard.css           # стили админки
+│   └── stubs/                       # webhook, воркер, хук и админка
+├── bin/integrat-queue               # явная CLI-команда установки файлов приложения
+├── tests/
+├── composer.json
+└── README.md
 ```
 
 ---
@@ -53,21 +55,22 @@ vendor/integrat/queue/
 
 ```bash
 composer require integrat/queue
+vendor/bin/integrat-queue install
 ```
 
 Автозагрузка идёт через общий `vendor/autoload.php` проекта.
 
-Пакет объявлен как `composer-plugin` — composer спросит разрешение на его запуск, ответь `y`. Это нужно, чтобы при установке создались стартовые файлы (см. следующий раздел); без разрешения пакет всё равно установится и будет работать, просто файлы придётся создать руками.
+`integrat/queue` — обычная Composer-библиотека. Она ничего не записывает в проект скрыто во время `composer install` / `composer update` и не требует настройки `allow-plugins`.
 
-```json
-{
-    "config": {
-        "allow-plugins": {
-            "integrat/queue": true
-        }
-    }
-}
+Команда `install` запускается явно из корня приложения. При нестандартном рабочем каталоге можно передать путь к проекту:
+
+```bash
+vendor/bin/integrat-queue install /path/to/project
 ```
+
+### Обновление с версии 1.x
+
+Версия 2.0 использует новый namespace `Integrat\Queue\` и более короткие имена публичных классов. `install` не перезаписывает файлы приложения, поэтому существующие `webhook.php`, `queue.php` и worker нужно обновить вручную по таблице в [UPGRADE.md](UPGRADE.md). После этого можно запустить `vendor/bin/integrat-queue install`: он создаст только недостающие файлы. Старую запись `integrat/queue` из `config.allow-plugins` можно удалить — пакет больше не является Composer-плагином.
 
 ---
 
@@ -89,27 +92,21 @@ composer require integrat/queue
     └── locks/                       # файлы блокировок воркера (создаётся автоматически)
 ```
 
-Собрать её можно двумя способами — дать пакету сделать всё самому при установке или создать файлы руками. Оба приводят к одному результату: **автоматический вариант кладёт ровно тот код, что расписан в разделе «Ручная установка»**, ничего сверх того.
+Собрать её можно двумя способами — запустить CLI-команду пакета или создать файлы руками. Оба приводят к одному результату: **команда кладёт ровно тот код, что расписан в разделе «Ручная установка»**, ничего сверх того.
 
-**Ничего не будет перезаписано.** Пакет создаёт только те файлы, которых ещё нет. Свои правки можно не бояться потерять: повторные `composer install` и `composer update` их не тронут и вообще ничего не выведут в консоль. Обратная сторона — удалённый за ненадобностью файл появится снова при следующей установке.
-
-**Как отключить.** Совсем убрать разворачивание — в `composer.json` проекта:
-
-```json
-{
-    "extra": {
-        "integrat/queue": { "scaffold": false }
-    }
-}
-```
-
-Для разового запуска хватит переменной окружения `QUEUE_NO_SCAFFOLD=1`.
+**Ничего не будет перезаписано.** Команда создаёт только те файлы, которых ещё нет. Свои правки можно не бояться потерять: повторный `integrat-queue install` оставит их без изменений.
 
 ---
 
-### Автоматическая установка
+### Установка командой
 
-Ничего делать не нужно: при `composer require` (а также при каждом последующем `composer install` / `composer update`) пакет сам разворачивает в корне проекта рабочий набор и печатает список созданных файлов.
+После `composer require` явно запусти команду в корне приложения:
+
+```bash
+vendor/bin/integrat-queue install
+```
+
+Она развернёт рабочий набор и напечатает список созданных файлов:
 
 ```
 webhook.php                       # точка приёма
@@ -133,7 +130,7 @@ storage/locks/                    # каталог под локи воркер�
 
 ### Ручная установка
 
-Нужна, если разворачивание отключено, composer-плагину не выдано разрешение (`allow-plugins`) или файлы хочется разложить иначе. Ниже — полный код всех файлов; это же содержимое создаётся автоматически.
+Нужна, если CLI-команду использовать нельзя или файлы хочется разложить иначе. Ниже — полный код всех файлов; это же содержимое создаёт `integrat-queue install`.
 
 Везде предполагается, что подключён composer-автолоадер проекта — `vendor/autoload.php`.
 
@@ -146,8 +143,8 @@ storage/locks/                    # каталог под локи воркер�
 
 require __DIR__ . '/vendor/autoload.php';
 
-use Queue\Core\Repository\SqliteRepository;
-use Queue\Core\Service\QueueService;
+use Integrat\Queue\Queue;
+use Integrat\Queue\Storage\SqliteJobRepository;
 
 // Сырое тело запроса (JSON или form-data)
 $rawData = file_get_contents('php://input') ?: '{}';
@@ -155,12 +152,12 @@ if (!empty($_POST)) {
     $rawData = json_encode($_POST);
 }
 
-$service = new QueueService(
-    new SqliteRepository(__DIR__ . '/storage/database/queue.sqlite')
+$queue = new Queue(
+    new SqliteJobRepository(__DIR__ . '/storage/database/queue.sqlite')
 );
 
 // $_SERVER нужен, чтобы сохранить источник и извлечь ?hook=<имя> из URL
-$service->push($_SERVER, $rawData);
+$queue->push($_SERVER, $rawData);
 
 http_response_code(200);
 echo 'OK';
@@ -177,7 +174,7 @@ echo 'OK';
 
 require __DIR__ . '/../vendor/autoload.php';
 
-use Queue\Worker\CronQueueWorker;
+use Integrat\Queue\Worker\CronQueueWorker;
 
 $worker = new CronQueueWorker(
     projectRoot: __DIR__ . '/../',
@@ -229,17 +226,17 @@ error_log('Пришли данные: ' . json_encode($payload, JSON_UNESCAPED_U
 
 require __DIR__ . '/vendor/autoload.php';
 
-use Queue\Core\Admin\QueueDashboard;
-use Queue\Core\Repository\SqliteRepository;
-use Queue\Core\Service\QueueService;
+use Integrat\Queue\Admin\QueueDashboard;
+use Integrat\Queue\Queue;
+use Integrat\Queue\Storage\SqliteJobRepository;
 
-$service = new QueueService(
-    new SqliteRepository(__DIR__ . '/storage/database/queue.sqlite')
+$queue = new Queue(
+    new SqliteJobRepository(__DIR__ . '/storage/database/queue.sqlite')
 );
 
 // Второй аргумент — папка hooks/: из неё берётся список хуков для фильтра.
 // Третий (необязательный) — URL стилей; без него CSS встраивается в страницу.
-(new QueueDashboard($service, __DIR__ . '/hooks'))->handle();
+(new QueueDashboard($queue, __DIR__ . '/hooks'))->handle();
 ```
 
 Открывается по `https://<хост>/queue.php`.
@@ -248,26 +245,26 @@ $service = new QueueService(
 
 > Смена статуса на `pending` или `completed` очищает поле `error` — оно относилось к прошлому прогону. Отметка `pending` возвращает задание воркеру, то есть равнозначна массовой переотправке (в том числе для `completed`-заданий).
 
-> **CSS админки.** По умолчанию стили встраиваются прямо в страницу из файла пакета — работает всегда, даже если `vendor/` закрыт от веба, настраивать нечего. Если хочешь отдавать CSS отдельным файлом (чтобы он кешировался браузером), скопируй `Core/Admin/QueueDashboard.css` в веб-доступную папку и передай URL третьим аргументом:
+> **CSS админки.** По умолчанию стили встраиваются прямо в страницу из файла пакета — работает всегда, даже если `vendor/` закрыт от веба, настраивать нечего. Если хочешь отдавать CSS отдельным файлом (чтобы он кешировался браузером), скопируй `resources/QueueDashboard.css` в веб-доступную папку и передай URL третьим аргументом:
 >
 > ```php
-> (new QueueDashboard($service, __DIR__ . '/hooks', '/assets/queue-dashboard.css'))->handle();
+> (new QueueDashboard($queue, __DIR__ . '/hooks', '/assets/queue-dashboard.css'))->handle();
 > ```
 
 #### 5. База данных
 
-Отдельно создавать не нужно: `SqliteRepository` при первом обращении **сам** создаёт файл БД и таблицу `jobs` (`CREATE TABLE IF NOT EXISTS`), а также каталог под неё. От тебя требуется лишь:
+Отдельно создавать не нужно: `SqliteJobRepository` при первом обращении **сам** создаёт файл БД и таблицу `jobs` (`CREATE TABLE IF NOT EXISTS`), а также каталог под неё. От тебя требуется лишь:
 
 - передать путь к файлу (в примерах — `storage/database/queue.sqlite`);
 - обеспечить папке `storage/` права на запись.
 
-Схема не требует ручных миграций; недостающие колонки старых БД досоздаются автоматически.
+Для первой установки миграции не нужны. Если структура таблицы изменится в будущей версии пакета, способ обновления схемы будет указан в инструкции к этой версии.
 
 ---
 
-## API — `QueueService`
+## API — `Queue`
 
-Единая точка работы с очередью. Конструктор: `new QueueService(SqliteRepository $repository)`.
+Единая точка работы с очередью. Конструктор: `new Queue(SqliteJobRepository $repository)`.
 
 | Метод | Назначение |
 | --- | --- |

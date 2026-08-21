@@ -1,15 +1,15 @@
 <?php
 
-namespace Queue\Core\Admin;
+namespace Integrat\Queue\Admin;
 
-use Queue\Core\Model\Job;
-use Queue\Core\Service\QueueService;
+use Integrat\Queue\Job;
+use Integrat\Queue\Queue;
 
 /**
  * Простой встроенный дашборд очереди.
  *
  * Здесь находятся только обработка фильтров, действия над задачами
- * и HTML-разметка страницы. Данные загружаются через QueueService.
+ * и HTML-разметка страницы. Данные загружаются через Queue.
  */
 final class QueueDashboard
 {
@@ -22,7 +22,7 @@ final class QueueDashboard
      *                              (кешируется браузером).
      */
     public function __construct(
-        private QueueService $service,
+        private Queue $queue,
         private string $hooksDir,
         private ?string $cssUrl = null,
     ) {
@@ -99,11 +99,11 @@ final class QueueDashboard
                     }
 
                     if ($bulkAction === 'delete') {
-                        $count = $this->service->deleteMany($ids);
+                        $count = $this->queue->deleteMany($ids);
                         $back['ok'] = "Удалено задач: {$count}";
                     } else {
                         $newStatus = substr($bulkAction, strlen('status:'));
-                        $count = $this->service->setStatusMany($ids, $newStatus);
+                        $count = $this->queue->setStatusMany($ids, $newStatus);
                         $back['ok'] = "Статус «{$newStatus}» проставлен задачам: {$count}";
                     }
                 } else {
@@ -152,8 +152,8 @@ final class QueueDashboard
             'created_to' => $createdTo,
         ];
 
-        $rows = $this->service->findFiltered($filters, $page, $perPage);
-        $totalRows = $this->service->countFiltered($filters);
+        $rows = $this->queue->findFiltered($filters, $page, $perPage);
+        $totalRows = $this->queue->countFiltered($filters);
         $totalPages = max(1, (int) ceil($totalRows / $perPage));
 
         $statusColors = [
@@ -625,7 +625,7 @@ final class QueueDashboard
      */
     private function readCss(): string
     {
-        $css = @file_get_contents(__DIR__ . '/QueueDashboard.css');
+        $css = @file_get_contents(dirname(__DIR__, 2) . '/resources/QueueDashboard.css');
 
         if ($css === false) {
             return '';

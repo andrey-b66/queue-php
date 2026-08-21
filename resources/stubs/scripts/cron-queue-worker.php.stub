@@ -2,7 +2,7 @@
 
 require __DIR__ . '/../{{VENDOR}}/autoload.php';
 
-use Queue\Worker\CronQueueWorker;
+use Integrat\Queue\Worker\CronQueueWorker;
 
 $worker = new CronQueueWorker(
     projectRoot: __DIR__ . '/../',

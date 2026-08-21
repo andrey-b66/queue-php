@@ -2,8 +2,8 @@
 
 require __DIR__ . '/{{VENDOR}}/autoload.php';
 
-use Queue\Core\Repository\SqliteRepository;
-use Queue\Core\Service\QueueService;
+use Integrat\Queue\Queue;
+use Integrat\Queue\Storage\SqliteJobRepository;
 
 // Сырое тело запроса (JSON или form-data)
 $rawData = file_get_contents('php://input') ?: '{}';
@@ -11,12 +11,12 @@ if (!empty($_POST)) {
     $rawData = json_encode($_POST);
 }
 
-$service = new QueueService(
-    new SqliteRepository(__DIR__ . '/storage/database/queue.sqlite')
+$queue = new Queue(
+    new SqliteJobRepository(__DIR__ . '/storage/database/queue.sqlite')
 );
 
 // $_SERVER нужен, чтобы сохранить источник и извлечь ?hook=<имя> из URL
-$service->push($_SERVER, $rawData);
+$queue->push($_SERVER, $rawData);
 
 http_response_code(200);
 echo 'OK';

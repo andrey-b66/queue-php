@@ -1,0 +1,37 @@
+#!/usr/bin/env php
+<?php
+
+declare(strict_types=1);
+
+use Integrat\Queue\Installer\InstallCommand;
+
+$autoloadPath = $GLOBALS['_composer_autoload_path'] ?? null;
+
+if (!is_string($autoloadPath) || !is_file($autoloadPath)) {
+    $candidates = [
+        dirname(__DIR__) . '/vendor/autoload.php',
+        dirname(__DIR__, 3) . '/autoload.php',
+    ];
+
+    $autoloadPath = null;
+    foreach ($candidates as $candidate) {
+        if (is_file($candidate)) {
+            $autoloadPath = $candidate;
+            break;
+        }
+    }
+}
+
+if (!is_string($autoloadPath)) {
+    fwrite(STDERR, "integrat/queue: не найден Composer autoload.php\n");
+    exit(1);
+}
+
+require_once $autoloadPath;
+
+$command = new InstallCommand(
+    packageRoot: dirname(__DIR__),
+    autoloadPath: $autoloadPath,
+);
+
+exit($command->run($argv));

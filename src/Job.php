@@ -1,6 +1,6 @@
 <?php
 
-namespace Queue\Core\Model;
+namespace Integrat\Queue;
 
 class Job
 {

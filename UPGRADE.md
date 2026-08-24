@@ -2,7 +2,7 @@
 
 ## С версии 1.x на 2.0
 
-Версия 2.0 меняет структуру исходников и публичные имена классов. Формат SQLite-базы и таблицы `jobs` не менялся, поэтому переносить данные или пересоздавать БД не нужно.
+Версия 2.0 несовместима с 1.x: изменились namespace, публичный API, статусы и схема таблицы `jobs`.
 
 ### 1. Обновите пакет
 
@@ -10,46 +10,47 @@
 composer require integrat/queue:^2.0 -W
 ```
 
-### 2. Замените импорты в коде приложения
+Пакет теперь имеет тип `library`. Старую запись `integrat/queue` из `config.allow-plugins` можно удалить.
+
+### 2. Используйте новую SQLite-базу
+
+Автоматической миграции старых полей `from_url`, `to_url`, `data` нет. Текущая таблица содержит:
+
+```text
+id, queue_name, source, payload, status,
+created_at, updated_at, closed_at, error
+```
+
+Перед обновлением при необходимости сделайте резервную копию старой базы, затем удалите её или укажите новый путь. Новая таблица создастся автоматически.
+
+### 3. Обновите публичные классы
 
 | 1.x | 2.0 |
 | --- | --- |
 | `Queue\Core\Model\Job` | `Integrat\Queue\Job` |
 | `Queue\Core\Service\QueueService` | `Integrat\Queue\Queue` |
 | `Queue\Core\Repository\SqliteRepository` | `Integrat\Queue\Storage\SqliteJobRepository` |
-| `Queue\Core\Admin\QueueDashboard` | `Integrat\Queue\Admin\QueueDashboard` |
-| `Queue\Hook\HookExecutor` | `Integrat\Queue\Hook\HookExecutor` |
-| `Queue\Worker\CronQueueWorker` | `Integrat\Queue\Worker\CronQueueWorker` |
+| `Queue\Core\Admin\QueueDashboard` | `Integrat\Queue\Admin\QueueDashboard` + `QueueAdmin` |
+| `Queue\Worker\CronQueueWorker` | `Integrat\Queue\Hook\HookWorker` |
+| прямое использование `HookExecutor` | `HookWorker::run()` |
 
-Также замените имена переменных и создание главного объекта, если использовали пример из документации:
+Статус `pending` заменён на `new`; также появился промежуточный статус `processing`.
 
-```php
-use Integrat\Queue\Queue;
-use Integrat\Queue\Storage\SqliteJobRepository;
+### 4. Обновите файлы приложения
 
-$queue = new Queue(
-    new SqliteJobRepository(__DIR__ . '/storage/database/queue.sqlite')
-);
-```
+Проверьте созданные ранее файлы:
 
-В первую очередь проверьте созданные ранее файлы:
+- `webhook.php` теперь создаёт `Job` и принимает `?queue=<имя>&source=<источник>`;
+- `queue.php` заменён на `dashboard.php`, который создаёт `QueueAdmin` и передаёт его в `QueueDashboard`;
+- `scripts/cron-queue-worker.php` заменён на `scripts/hook-worker.php`;
+- `HookWorker` сам создаёт lock-файл рядом с SQLite-базой, поэтому аргумент `lockFile` больше не передаётся;
+- hook-файлы получают декодированный JSON либо исходную строку в `$payload`.
 
-- `webhook.php`;
-- `queue.php`;
-- `scripts/cron-queue-worker.php`;
-- собственные обработчики, напрямую использующие классы пакета.
-
-Команда `vendor/bin/integrat-queue install` намеренно не перезаписывает существующие файлы, поэтому она не заменит старые импорты автоматически.
-
-### 3. Удалите разрешение старого Composer-плагина
-
-Пакет теперь имеет тип `library`. Запись `integrat/queue` в `config.allow-plugins` больше не нужна и может быть удалена.
-
-### 4. Проверьте приложение
+Команда установки намеренно не перезаписывает существующие файлы, поэтому обновить их нужно вручную по примерам из README. После этого можно создать только нужный набор или оба сразу:
 
 ```bash
-vendor/bin/integrat-queue install
-php scripts/cron-queue-worker.php
+vendor/bin/integrat-queue install:dashboard # только dashboard.php
+vendor/bin/integrat-queue install:hooks     # webhook, пример хука и worker
+vendor/bin/integrat-queue install           # оба набора
+php scripts/hook-worker.php
 ```
-
-Повторный `install` должен сообщить, что все стартовые файлы уже существуют. Вебхук, админка и cron-воркер после замены импортов продолжают использовать прежнюю SQLite-базу.

@@ -232,7 +232,7 @@ td.select {
     font-size: 12px;
 }
 
-.hook {
+.queue-name {
     min-width: 110px;
     color: #1d4ed8;
     white-space: nowrap;
@@ -241,7 +241,7 @@ td.select {
 }
 
 /* Столбцы URL сжимаются последними: перенос только по необходимости, не посимвольно */
-.url {
+.source {
     min-width: 240px;
     max-width: 340px;
     color: #4b5563;
@@ -261,18 +261,18 @@ td.select {
     font-size: 12px;
 }
 
-/* Столбец data забирает всю свободную ширину таблицы — JSON видно целиком */
-td.data-cell {
+/* Столбец payload забирает всю свободную ширину таблицы — JSON видно целиком */
+td.payload-cell {
     width: 100%;
     min-width: 420px;
 }
 
-details.data summary {
+details.payload summary {
     color: #4b5563;
     cursor: pointer;
 }
 
-details.data pre {
+details.payload pre {
     max-height: 400px;
     margin: 8px 0 0;
     padding: 10px;

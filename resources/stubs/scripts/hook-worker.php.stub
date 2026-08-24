@@ -1,0 +1,13 @@
+<?php
+
+require __DIR__ . '/../{{VENDOR}}/autoload.php';
+
+use Integrat\Queue\Hook\HookWorker;
+
+$worker = new HookWorker(
+    databaseFile: __DIR__ . '/../storage/database/queue.sqlite',
+    hooksDirectory: __DIR__ . '/../hooks',
+    batchSize: 50,
+);
+
+$worker->run();

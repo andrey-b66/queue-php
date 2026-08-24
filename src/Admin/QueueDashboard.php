@@ -3,18 +3,16 @@
 namespace Integrat\Queue\Admin;
 
 use Integrat\Queue\Job;
-use Integrat\Queue\Queue;
 
 /**
  * Простой встроенный дашборд очереди.
  *
  * Здесь находятся только обработка фильтров, действия над задачами
- * и HTML-разметка страницы. Данные загружаются через Queue.
+ * и HTML-разметка страницы. Данные загружаются через QueueAdmin.
  */
 final class QueueDashboard
 {
     /**
-     * @param string      $hooksDir папка с файлами-хуками (из неё берётся список для фильтра)
      * @param string|null $cssUrl   URL стилей админки. По умолчанию (null) стили
      *                              встраиваются в страницу из файла пакета — это работает
      *                              независимо от того, доступен ли vendor/ из веба.
@@ -22,8 +20,7 @@ final class QueueDashboard
      *                              (кешируется браузером).
      */
     public function __construct(
-        private Queue $queue,
-        private string $hooksDir,
+        private QueueAdmin $admin,
         private ?string $cssUrl = null,
     ) {
     }
@@ -32,24 +29,13 @@ final class QueueDashboard
     {
         $allowedLimits = [25, 50, 100, 200];
         $allowedStatuses = [
-            Job::STATUS_PENDING,
+            Job::STATUS_NEW,
+            Job::STATUS_PROCESSING,
             Job::STATUS_COMPLETED,
             Job::STATUS_FAILED,
         ];
 
-        $availableHooks = [];
-        $hooksPattern = rtrim($this->hooksDir, '/\\') . '/*.php';
-        $hookFiles = glob($hooksPattern);
-
-        if ($hookFiles === false) {
-            $hookFiles = [];
-        }
-
-        foreach ($hookFiles as $hookFile) {
-            $availableHooks[] = basename($hookFile, '.php');
-        }
-
-        sort($availableHooks);
+        $availableQueueNames = $this->admin->getQueueNames();
 
         $requestUri = (string) ($_SERVER['REQUEST_URI'] ?? '');
         $basePath = strtok($requestUri, '?');
@@ -62,7 +48,8 @@ final class QueueDashboard
 
         // Ключ — значение кнопки массового действия, значение — её подпись
         $bulkActions = [
-            'status:' . Job::STATUS_PENDING => 'Пометить pending',
+            'status:' . Job::STATUS_NEW => 'Пометить new',
+            'status:' . Job::STATUS_PROCESSING => 'Пометить processing',
             'status:' . Job::STATUS_COMPLETED => 'Пометить completed',
             'status:' . Job::STATUS_FAILED => 'Пометить failed',
             'delete' => 'Удалить',
@@ -78,7 +65,7 @@ final class QueueDashboard
             $back = [
                 'q' => trim((string) ($_POST['q'] ?? '')),
                 'status' => (string) ($_POST['status'] ?? ''),
-                'hook' => trim((string) ($_POST['hook'] ?? '')),
+                'queue_name' => trim((string) ($_POST['queue_name'] ?? '')),
                 'created_from' => $this->normalizeDate($_POST['created_from'] ?? ''),
                 'created_to' => $this->normalizeDate($_POST['created_to'] ?? ''),
                 'limit' => $postLimit === 50 ? '' : $postLimit,
@@ -99,11 +86,11 @@ final class QueueDashboard
                     }
 
                     if ($bulkAction === 'delete') {
-                        $count = $this->queue->deleteMany($ids);
+                        $count = $this->admin->deleteMany($ids);
                         $back['ok'] = "Удалено задач: {$count}";
                     } else {
                         $newStatus = substr($bulkAction, strlen('status:'));
-                        $count = $this->queue->setStatusMany($ids, $newStatus);
+                        $count = $this->admin->setStatusMany($ids, $newStatus);
                         $back['ok'] = "Статус «{$newStatus}» проставлен задачам: {$count}";
                     }
                 } else {
@@ -131,7 +118,7 @@ final class QueueDashboard
 
         $page = max(1, (int) ($_GET['page'] ?? 1));
         $status = (string) ($_GET['status'] ?? '');
-        $hook = trim((string) ($_GET['hook'] ?? ''));
+        $queueName = trim((string) ($_GET['queue_name'] ?? ''));
         $q = trim((string) ($_GET['q'] ?? ''));
         $createdFrom = $this->normalizeDate($_GET['created_from'] ?? '');
         $createdTo = $this->normalizeDate($_GET['created_to'] ?? '');
@@ -140,38 +127,39 @@ final class QueueDashboard
             $status = '';
         }
 
-        if (!in_array($hook, $availableHooks, true)) {
-            $hook = '';
+        if (!in_array($queueName, $availableQueueNames, true)) {
+            $queueName = '';
         }
 
         $filters = [
             'status' => $status,
-            'hook' => $hook,
+            'queue_name' => $queueName,
             'q' => $q,
             'created_from' => $createdFrom,
             'created_to' => $createdTo,
         ];
 
-        $rows = $this->queue->findFiltered($filters, $page, $perPage);
-        $totalRows = $this->queue->countFiltered($filters);
+        $rows = $this->admin->findFiltered($filters, $page, $perPage);
+        $totalRows = $this->admin->countFiltered($filters);
         $totalPages = max(1, (int) ceil($totalRows / $perPage));
 
         $statusColors = [
-            Job::STATUS_PENDING => '#a16207',
+            Job::STATUS_NEW => '#a16207',
+            Job::STATUS_PROCESSING => '#1d4ed8',
             Job::STATUS_COMPLETED => '#15803d',
             Job::STATUS_FAILED => '#b91c1c',
         ];
 
         $hasActiveFilters = $q !== ''
             || $status !== ''
-            || $hook !== ''
+            || $queueName !== ''
             || $createdFrom !== ''
             || $createdTo !== '';
 
         $listUrl = function (array $overrides = []) use (
             $q,
             $status,
-            $hook,
+            $queueName,
             $createdFrom,
             $createdTo,
             $perPage,
@@ -180,7 +168,7 @@ final class QueueDashboard
             $params = [
                 'q' => $q,
                 'status' => $status,
-                'hook' => $hook,
+                'queue_name' => $queueName,
                 'created_from' => $createdFrom,
                 'created_to' => $createdTo,
                 'limit' => $perPage === 50 ? null : $perPage,
@@ -249,7 +237,7 @@ final class QueueDashboard
                     type="text"
                     name="q"
                     value="<?= $this->escape($q) ?>"
-                    placeholder="ID, URL, data или error"
+                    placeholder="ID, очередь, источник, payload или error"
                 >
             </div>
 
@@ -269,15 +257,15 @@ final class QueueDashboard
             </div>
 
             <div class="field">
-                <label for="hook">Хук</label>
-                <select id="hook" name="hook">
-                    <option value="">Все хуки</option>
-                    <?php foreach ($availableHooks as $availableHook): ?>
+                <label for="queue_name">Очередь</label>
+                <select id="queue_name" name="queue_name">
+                    <option value="">Все очереди</option>
+                    <?php foreach ($availableQueueNames as $availableQueueName): ?>
                         <option
-                            value="<?= $this->escape($availableHook) ?>"
-                            <?= $hook === $availableHook ? 'selected' : '' ?>
+                            value="<?= $this->escape($availableQueueName) ?>"
+                            <?= $queueName === $availableQueueName ? 'selected' : '' ?>
                         >
-                            <?= $this->escape($availableHook) ?>
+                            <?= $this->escape($availableQueueName) ?>
                         </option>
                     <?php endforeach; ?>
                 </select>
@@ -352,7 +340,7 @@ final class QueueDashboard
         <input type="hidden" name="limit" value="<?= $this->escape($perPage) ?>">
         <input type="hidden" name="page" value="<?= $this->escape($page) ?>">
         <input type="hidden" name="status" value="<?= $this->escape($status) ?>">
-        <input type="hidden" name="hook" value="<?= $this->escape($hook) ?>">
+        <input type="hidden" name="queue_name" value="<?= $this->escape($queueName) ?>">
         <input type="hidden" name="q" value="<?= $this->escape($q) ?>">
         <input type="hidden" name="created_from" value="<?= $this->escape($createdFrom) ?>">
         <input type="hidden" name="created_to" value="<?= $this->escape($createdTo) ?>">
@@ -405,14 +393,14 @@ final class QueueDashboard
                             >
                         </th>
                         <th>id</th>
+                        <th>queue_name</th>
+                        <th>source</th>
                         <th>status</th>
                         <th>error</th>
                         <th>created_at</th>
                         <th>updated_at</th>
-                        <th>hook</th>
-                        <th>from_url</th>
-                        <th>to_url</th>
-                        <th>data</th>
+                        <th>closed_at</th>
+                        <th>payload</th>
                     </tr>
                 </thead>
                 <tbody>
@@ -425,7 +413,7 @@ final class QueueDashboard
                     <?php else: ?>
                         <?php foreach ($rows as $row): ?>
                             <?php
-                            $dataText = $this->makeJsonReadable((string) $row['data']);
+                            $payloadText = $this->makeJsonReadable((string) $row['payload']);
                             $errorText = (string) ($row['error'] ?? '');
                             ?>
                             <tr>
@@ -441,6 +429,14 @@ final class QueueDashboard
 
                                 <td class="id">
                                     <?= $this->highlight($row['id'], $q) ?>
+                                </td>
+
+                                <td class="queue-name">
+                                    <?= $this->highlight($row['queue_name'], $q) ?>
+                                </td>
+
+                                <td class="source">
+                                    <?= $this->highlight($row['source'], $q) ?>
                                 </td>
 
                                 <td>
@@ -468,22 +464,14 @@ final class QueueDashboard
                                     <?= $this->escape($row['updated_at']) ?>
                                 </td>
 
-                                <td class="hook">
-                                    <?= $this->highlight($this->getHookFromUrl((string) $row['to_url']), $q) ?>
+                                <td class="date">
+                                    <?= $row['closed_at'] === '' ? '—' : $this->escape($row['closed_at']) ?>
                                 </td>
 
-                                <td class="url">
-                                    <?= $this->highlight($row['from_url'], $q) ?>
-                                </td>
-
-                                <td class="url">
-                                    <?= $this->highlight($row['to_url'], $q) ?>
-                                </td>
-
-                                <td class="data-cell">
-                                    <details class="data" <?= $q !== '' ? 'open' : '' ?>>
+                                <td class="payload-cell">
+                                    <details class="payload" <?= $q !== '' ? 'open' : '' ?>>
                                         <summary>Показать данные</summary>
-                                        <pre><?= $this->expandEscapedNewLines($this->highlight($dataText, $q)) ?></pre>
+                                        <pre><?= $this->expandEscapedNewLines($this->highlight($payloadText, $q)) ?></pre>
                                     </details>
                                 </td>
                             </tr>
@@ -514,7 +502,7 @@ final class QueueDashboard
         <form class="page-size-form" method="get">
             <input type="hidden" name="q" value="<?= $this->escape($q) ?>">
             <input type="hidden" name="status" value="<?= $this->escape($status) ?>">
-            <input type="hidden" name="hook" value="<?= $this->escape($hook) ?>">
+            <input type="hidden" name="queue_name" value="<?= $this->escape($queueName) ?>">
             <input type="hidden" name="created_from" value="<?= $this->escape($createdFrom) ?>">
             <input type="hidden" name="created_to" value="<?= $this->escape($createdTo) ?>">
 
@@ -675,22 +663,12 @@ final class QueueDashboard
         return $date;
     }
 
-    private function getHookFromUrl(string $url): string
+    private function makeJsonReadable(string $payload): string
     {
-        $query = (string) parse_url($url, PHP_URL_QUERY);
-        $params = [];
-
-        parse_str($query, $params);
-
-        return (string) ($params['hook'] ?? '');
-    }
-
-    private function makeJsonReadable(string $data): string
-    {
-        $decoded = json_decode($data, true);
+        $decoded = json_decode($payload, true);
 
         if (json_last_error() !== JSON_ERROR_NONE) {
-            return $data;
+            return $payload;
         }
 
         $decoded = $this->decodeNestedJson($decoded);
@@ -700,7 +678,7 @@ final class QueueDashboard
         );
 
         if ($result === false) {
-            return $data;
+            return $payload;
         }
 
         return $result;

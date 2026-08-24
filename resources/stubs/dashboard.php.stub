@@ -1,0 +1,15 @@
+<?php
+
+require __DIR__ . '/{{VENDOR}}/autoload.php';
+
+use Integrat\Queue\Admin\QueueAdmin;
+use Integrat\Queue\Admin\QueueDashboard;
+use Integrat\Queue\Storage\SqliteJobRepository;
+
+$admin = new QueueAdmin(
+    new SqliteJobRepository(__DIR__ . '/storage/database/queue.sqlite')
+);
+
+// Второй (необязательный) аргумент — URL стилей, например '/assets/queue-dashboard.css'.
+// Без него CSS встраивается в страницу из файла пакета.
+(new QueueDashboard($admin))->handle();

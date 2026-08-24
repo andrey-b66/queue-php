@@ -16,20 +16,26 @@ final class Scaffolder
     /**
      * Путь назначения (относительно корня проекта) => файл-заготовка в stubs/.
      */
-    private const FILES = [
-        'webhook.php'                      => 'webhook.php.stub',
-        'queue.php'                        => 'queue.php.stub',
-        'scripts/cron-queue-worker.php'    => 'scripts/cron-queue-worker.php.stub',
-        'hooks/example.php'                => 'hooks/example.php.stub',
-        'storage/.gitignore'               => 'storage/gitignore.stub',
+    private const COMMON_FILES = [
+        'storage/.gitignore' => 'storage/gitignore.stub',
+    ];
+
+    private const COMPONENT_FILES = [
+        'dashboard' => [
+            'dashboard.php' => 'dashboard.php.stub',
+        ],
+        'hooks' => [
+            'webhook.php'             => 'webhook.php.stub',
+            'scripts/hook-worker.php' => 'scripts/hook-worker.php.stub',
+            'hooks/example.php'       => 'hooks/example.php.stub',
+        ],
     ];
 
     /**
-     * Каталоги, которые создаются пустыми (БД и локи движок наполняет сам).
+     * Каталоги, которые создаются пустыми (БД и lock-файл worker создаст сам).
      */
     private const DIRS = [
         'storage/database',
-        'storage/locks',
     ];
 
     /**
@@ -43,17 +49,29 @@ final class Scaffolder
     }
 
     /**
+     * @param list<'dashboard'|'hooks'> $components
      * @return string[] относительные пути созданных файлов
      */
-    public function run(): array
+    public function run(array $components = ['dashboard', 'hooks']): array
     {
         $created = [];
+        $files = [];
+
+        foreach ($components as $component) {
+            if (!isset(self::COMPONENT_FILES[$component])) {
+                throw new RuntimeException('Неизвестный компонент установки: ' . $component);
+            }
+
+            $files += self::COMPONENT_FILES[$component];
+        }
+
+        $files += self::COMMON_FILES;
 
         foreach (self::DIRS as $dir) {
             $this->makeDir($this->projectRoot . '/' . $dir);
         }
 
-        foreach (self::FILES as $target => $stub) {
+        foreach ($files as $target => $stub) {
             if ($this->copyStub($stub, $target)) {
                 $created[] = $target;
             }
@@ -67,8 +85,12 @@ final class Scaffolder
         $source      = $this->stubDir . '/' . $stub;
         $destination = $this->projectRoot . '/' . $target;
 
-        if (file_exists($destination) || !is_file($source)) {
+        if (file_exists($destination)) {
             return false;
+        }
+
+        if (!is_file($source)) {
+            throw new RuntimeException('Заготовка не найдена: ' . $source);
         }
 
         $contents = file_get_contents($source);

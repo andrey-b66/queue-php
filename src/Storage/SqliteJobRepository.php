@@ -22,22 +22,23 @@ class SqliteJobRepository
             $this->pdo->setAttribute(PDO::ATTR_ERRMODE, PDO::ERRMODE_EXCEPTION);
             $this->pdo->setAttribute(PDO::ATTR_DEFAULT_FETCH_MODE, PDO::FETCH_ASSOC);
 
-            $this->createCallTable();
+            $this->createJobsTable();
         } catch (PDOException $e) {
             throw new \Exception("Failed to initialize queue database: $e");
         }
     }
 
-    private function createCallTable(): void
+    private function createJobsTable(): void
     {
         $query = "CREATE TABLE IF NOT EXISTS jobs (
             id INTEGER PRIMARY KEY AUTOINCREMENT,
-            from_url TEXT,
-            to_url TEXT,
-            status TEXT,
-            data TEXT,
-            created_at TEXT,
-            updated_at TEXT,
+            queue_name TEXT NOT NULL,
+            source TEXT NOT NULL,
+            payload TEXT NOT NULL,
+            status TEXT NOT NULL,
+            created_at TEXT NOT NULL,
+            updated_at TEXT NOT NULL,
+            closed_at TEXT NOT NULL,
             error TEXT
         )";
         $this->pdo->exec($query);
@@ -46,31 +47,36 @@ class SqliteJobRepository
     public function create(Job $job): Job
     {
         $sql = "INSERT INTO jobs (
-            from_url,
-            to_url,
+            queue_name,
+            source,
+            payload,
             status,
-            data,
             created_at,
-            updated_at
+            updated_at,
+            closed_at,
+            error
         ) VALUES (
-            :from_url,
-            :to_url,
+            :queue_name,
+            :source,
+            :payload,
             :status,
-            :data,
             :created_at,
-            :updated_at
+            :updated_at,
+            :closed_at,
+            :error
         )";
 
         $stmt = $this->pdo->prepare($sql);
 
-        // Используем геттеры вместо прямого доступа к свойствам
         $stmt->execute([
-            ':from_url' => $job->getFromUrl(),
-            ':to_url' => $job->getToUrl(),
-            ':status' => $job->getStatus(),
-            ':data' => $job->getData(),
-            ':created_at' => $job->getCreatedAt(),
-            ':updated_at' => $job->getUpdatedAt(),
+            ':queue_name' => $job->queueName,
+            ':source' => $job->source,
+            ':payload' => $job->payload,
+            ':status' => $job->status,
+            ':created_at' => $job->createdAt,
+            ':updated_at' => $job->updatedAt,
+            ':closed_at' => $job->closedAt,
+            ':error' => $job->error,
         ]);
 
         // После вставки получаем полный объект из БД
@@ -89,57 +95,14 @@ class SqliteJobRepository
         return $row ? Job::fromDatabase($row) : null;
     }
 
-    public function findByStatus(string $status, int $limit): array
+    public function findByStatus(string $status): array
     {
         $sql = "SELECT * FROM jobs 
                 WHERE status = :status 
-                ORDER BY created_at ASC
-                LIMIT :limit";
-
-        $stmt = $this->pdo->prepare($sql);
-        $stmt->execute([
-            ':status' => $status,
-            ':limit' => $limit
-        ]);
-
-        return array_map(
-            fn ($row) => Job::fromDatabase($row),
-            $stmt->fetchAll()
-        );
-    }
-
-    public function findPaginated(int $page = 1, int $limit = 50): array
-    {
-        $offset = ($page - 1) * $limit;
-
-        $sql = "SELECT * FROM jobs
-                ORDER BY created_at DESC, id DESC
-                LIMIT :limit OFFSET :offset";
-
-        $stmt = $this->pdo->prepare($sql);
-        $stmt->bindValue(':limit', $limit, PDO::PARAM_INT);
-        $stmt->bindValue(':offset', $offset, PDO::PARAM_INT);
-        $stmt->execute();
-
-        return array_map(
-            fn ($row) => Job::fromDatabase($row),
-            $stmt->fetchAll()
-        );
-    }
-
-    public function findByStatusPaginated(string $status, int $page = 1, int $limit = 50): array
-    {
-        $offset = ($page - 1) * $limit;
-
-        $sql = "SELECT * FROM jobs
-                WHERE status = :status
-                ORDER BY created_at DESC, id DESC
-                LIMIT :limit OFFSET :offset";
+                ORDER BY created_at ASC";
 
         $stmt = $this->pdo->prepare($sql);
         $stmt->bindValue(':status', $status);
-        $stmt->bindValue(':limit', $limit, PDO::PARAM_INT);
-        $stmt->bindValue(':offset', $offset, PDO::PARAM_INT);
         $stmt->execute();
 
         return array_map(
@@ -150,7 +113,7 @@ class SqliteJobRepository
 
     /**
      * Свободный поиск по подстроке во всех значимых колонках.
-     * Ищет по data (JSON payload), from_url, to_url, status и id.
+     * Ищет по имени очереди, источнику, payload, статусу, ошибке и ID.
      *
      * @return Job[]
      */
@@ -163,10 +126,11 @@ class SqliteJobRepository
         $like = '%' . $escaped . '%';
 
         $sql = "SELECT * FROM jobs
-                WHERE data LIKE :like ESCAPE '\\'
-                   OR from_url LIKE :like ESCAPE '\\'
-                   OR to_url LIKE :like ESCAPE '\\'
+                WHERE queue_name LIKE :like ESCAPE '\\'
+                   OR source LIKE :like ESCAPE '\\'
+                   OR payload LIKE :like ESCAPE '\\'
                    OR status LIKE :like ESCAPE '\\'
+                   OR error LIKE :like ESCAPE '\\'
                    OR CAST(id AS TEXT) LIKE :like ESCAPE '\\'
                 ORDER BY created_at DESC, id DESC
                 LIMIT :limit OFFSET :offset";
@@ -188,10 +152,12 @@ class SqliteJobRepository
      *
      * @param array{
      *     status?: string,
-     *     hook?: string,
+     *     queue_name?: string,
+     *     source?: string,
      *     q?: string,
      *     created_from?: string,
-     *     created_to?: string
+     *     created_to?: string,
+     *     sort?: 'ASC'|'DESC'
      * } $filters
      * @return Job[]
      */
@@ -200,12 +166,17 @@ class SqliteJobRepository
         $offset = ($page - 1) * $limit;
 
         [$where, $params] = $this->buildFilterConditions($filters);
+        $sort = strtoupper((string) ($filters['sort'] ?? 'DESC'));
+
+        if (!in_array($sort, ['ASC', 'DESC'], true)) {
+            $sort = 'DESC';
+        }
 
         $sql = 'SELECT * FROM jobs';
         if ($where !== []) {
             $sql .= ' WHERE ' . implode(' AND ', $where);
         }
-        $sql .= ' ORDER BY created_at DESC, id DESC LIMIT :limit OFFSET :offset';
+        $sql .= " ORDER BY created_at {$sort}, id {$sort} LIMIT :limit OFFSET :offset";
 
         $stmt = $this->pdo->prepare($sql);
         foreach ($params as $key => $value) {
@@ -226,7 +197,8 @@ class SqliteJobRepository
      *
      * @param array{
      *     status?: string,
-     *     hook?: string,
+     *     queue_name?: string,
+     *     source?: string,
      *     q?: string,
      *     created_from?: string,
      *     created_to?: string
@@ -251,11 +223,27 @@ class SqliteJobRepository
     }
 
     /**
+     * @return string[]
+     */
+    public function findQueueNames(): array
+    {
+        $statement = $this->pdo->query(
+            "SELECT DISTINCT queue_name
+             FROM jobs
+             WHERE queue_name <> ''
+             ORDER BY queue_name ASC"
+        );
+
+        return array_map('strval', $statement->fetchAll(PDO::FETCH_COLUMN));
+    }
+
+    /**
      * Собирает условия WHERE и параметры для фильтруемых выборок.
      *
      * @param array{
      *     status?: string,
-     *     hook?: string,
+     *     queue_name?: string,
+     *     source?: string,
      *     q?: string,
      *     created_from?: string,
      *     created_to?: string
@@ -272,20 +260,22 @@ class SqliteJobRepository
             $params[':status'] = $filters['status'];
         }
 
-        if (!empty($filters['hook'])) {
-            // Хук лежит в to_url как ?hook=name — матчим значение целиком (в конце или перед &)
-            $hook = str_replace(['\\', '%', '_'], ['\\\\', '\\%', '\\_'], $filters['hook']);
-            $where[] = "(to_url LIKE :hook_ends ESCAPE '\\' OR to_url LIKE :hook_mid ESCAPE '\\')";
-            $params[':hook_ends'] = '%hook=' . $hook;
-            $params[':hook_mid'] = '%hook=' . $hook . '&%';
+        if (!empty($filters['queue_name'])) {
+            $where[] = 'queue_name = :queue_name';
+            $params[':queue_name'] = $filters['queue_name'];
+        }
+
+        if (!empty($filters['source'])) {
+            $where[] = 'source = :source';
+            $params[':source'] = $filters['source'];
         }
 
         if (isset($filters['q']) && $filters['q'] !== '') {
             $q = str_replace(['\\', '%', '_'], ['\\\\', '\\%', '\\_'], $filters['q']);
             $params[':q'] = '%' . $q . '%';
-            $where[] = "(data LIKE :q ESCAPE '\\'
-                     OR from_url LIKE :q ESCAPE '\\'
-                     OR to_url LIKE :q ESCAPE '\\'
+            $where[] = "(queue_name LIKE :q ESCAPE '\\'
+                     OR source LIKE :q ESCAPE '\\'
+                     OR payload LIKE :q ESCAPE '\\'
                      OR status LIKE :q ESCAPE '\\'
                      OR error LIKE :q ESCAPE '\\'
                      OR CAST(id AS TEXT) LIKE :q ESCAPE '\\')";
@@ -307,29 +297,33 @@ class SqliteJobRepository
     public function updateStatus(Job $job): ?Job
     {
         $sql = "UPDATE jobs
-                SET status = :status, updated_at = :updated_at, error = :error
+                SET status = :status,
+                    updated_at = :updated_at,
+                    closed_at = :closed_at,
+                    error = :error
                 WHERE id = :id";
 
         $stmt = $this->pdo->prepare($sql);
         $stmt->execute([
-            ':id' => $job->getId(),
-            ':status' => $job->getStatus(),
-            ':updated_at' => $job->getUpdatedAt(),
-            ':error' => $job->getError(),
+            ':id' => $job->id,
+            ':status' => $job->status,
+            ':updated_at' => $job->updatedAt,
+            ':closed_at' => $job->closedAt,
+            ':error' => $job->error,
         ]);
 
         if ($stmt->rowCount() === 0) {
             return null;
         }
 
-        return $this->findById($job->getId());
+        return $this->findById($job->id);
     }
 
     /**
      * Массовая смена статуса по списку ID.
      *
      * Ошибка сбрасывается, если новый статус не `failed` — она относилась
-     * к прошлому прогону и для pending/completed уже неактуальна.
+     * к прошлому прогону и для new/processing/completed уже неактуальна.
      *
      * @param int[] $ids
      * @return int Количество затронутых задач
@@ -342,7 +336,13 @@ class SqliteJobRepository
             return 0;
         }
 
-        $sql = 'UPDATE jobs SET status = :status, updated_at = :updated_at';
+        $updatedAt = date('Y-m-d H:i:s');
+        $closedAt = in_array($status, [Job::STATUS_COMPLETED, Job::STATUS_FAILED], true)
+            ? $updatedAt
+            : '';
+
+        $sql = 'UPDATE jobs
+                SET status = :status, updated_at = :updated_at, closed_at = :closed_at';
 
         if ($status !== Job::STATUS_FAILED) {
             $sql .= ', error = NULL';
@@ -352,7 +352,8 @@ class SqliteJobRepository
 
         $stmt = $this->pdo->prepare($sql);
         $stmt->bindValue(':status', $status);
-        $stmt->bindValue(':updated_at', date('Y-m-d H:i:s'));
+        $stmt->bindValue(':updated_at', $updatedAt);
+        $stmt->bindValue(':closed_at', $closedAt);
 
         foreach ($params as $key => $value) {
             $stmt->bindValue($key, $value, PDO::PARAM_INT);

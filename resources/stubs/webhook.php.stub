@@ -2,21 +2,39 @@
 
 require __DIR__ . '/{{VENDOR}}/autoload.php';
 
+use Integrat\Queue\Job;
 use Integrat\Queue\Queue;
 use Integrat\Queue\Storage\SqliteJobRepository;
 
 // Сырое тело запроса (JSON или form-data)
 $rawData = file_get_contents('php://input') ?: '{}';
 if (!empty($_POST)) {
-    $rawData = json_encode($_POST);
+    $encoded = json_encode($_POST, JSON_UNESCAPED_UNICODE);
+
+    if ($encoded !== false) {
+        $rawData = $encoded;
+    }
 }
+
+$queueName = trim((string) ($_GET['queue'] ?? ''));
+
+if ($queueName === '') {
+    http_response_code(400);
+    exit('Не указан параметр queue');
+}
+
+$source = trim((string) (
+    $_GET['source']
+    ?? $_SERVER['HTTP_X_SOURCE']
+    ?? $_SERVER['REMOTE_ADDR']
+    ?? 'unknown'
+));
 
 $queue = new Queue(
     new SqliteJobRepository(__DIR__ . '/storage/database/queue.sqlite')
 );
 
-// $_SERVER нужен, чтобы сохранить источник и извлечь ?hook=<имя> из URL
-$queue->push($_SERVER, $rawData);
+$queue->push(Job::create($queueName, $source, $rawData));
 
 http_response_code(200);
 echo 'OK';

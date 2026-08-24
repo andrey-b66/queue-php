@@ -13,6 +13,14 @@ use Throwable;
  */
 final class InstallCommand
 {
+    private const HELP_ARGUMENTS = ['help', '--help', '-h'];
+
+    private const COMMAND_COMPONENTS = [
+        'install'           => ['dashboard', 'hooks'],
+        'install:dashboard' => ['dashboard'],
+        'install:hooks'     => ['hooks'],
+    ];
+
     private Closure $stdout;
     private Closure $stderr;
 
@@ -37,12 +45,16 @@ final class InstallCommand
     {
         $command = $arguments[1] ?? null;
 
-        if ($command === null || $command === 'help' || $command === '--help' || $command === '-h') {
+        if (
+            $command === null
+            || in_array($command, self::HELP_ARGUMENTS, true)
+            || in_array($arguments[2] ?? '', self::HELP_ARGUMENTS, true)
+        ) {
             $this->writeHelp();
             return 0;
         }
 
-        if ($command !== 'install') {
+        if (!isset(self::COMMAND_COMPONENTS[$command])) {
             $this->error("Неизвестная команда: {$command}\n\n");
             $this->writeHelp(true);
             return 64;
@@ -67,22 +79,25 @@ final class InstallCommand
                 ['{{VENDOR}}' => $vendorPath],
             );
 
-            $created = $scaffolder->run();
+            $created = $scaffolder->run(self::COMMAND_COMPONENTS[$command]);
         } catch (Throwable $exception) {
             $this->error("integrat/queue: {$exception->getMessage()}\n");
             return 1;
         }
 
         if ($created === []) {
-            $this->write("integrat/queue: все стартовые файлы уже существуют, изменений нет.\n");
+            $this->write('integrat/queue: выбранные файлы уже существуют, изменений нет.' . PHP_EOL);
             return 0;
         }
 
-        $this->write("integrat/queue: созданы стартовые файлы:\n");
+        $this->write('integrat/queue: созданы файлы:' . PHP_EOL);
         foreach ($created as $path) {
-            $this->write("  - {$path}\n");
+            $this->write('  - ' . $path . PHP_EOL);
         }
-        $this->write("Настройте cron для scripts/cron-queue-worker.php.\n");
+
+        if (in_array('hooks', self::COMMAND_COMPONENTS[$command], true)) {
+            $this->write('Запускайте scripts/hook-worker.php вручную или через cron.' . PHP_EOL);
+        }
 
         return 0;
     }
@@ -175,10 +190,12 @@ final class InstallCommand
 integrat/queue — автономная SQLite-очередь
 
 Использование:
-  integrat-queue install [путь-к-проекту]
+  integrat-queue install:dashboard [путь-к-проекту]  Создать веб-панель
+  integrat-queue install:hooks [путь-к-проекту]      Создать webhook, пример хука и worker для cron
+  integrat-queue install [путь-к-проекту]            Создать оба набора
 
-Команда создаёт только отсутствующие стартовые файлы и никогда
-не перезаписывает существующие файлы приложения.
+Команды создают только отсутствующие стартовые файлы и никогда
+не перезаписывают существующие файлы приложения.
 
 TXT;
 

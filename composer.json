@@ -31,9 +31,6 @@
             "Composer\\Config::disableProcessTimeout",
             "php-cs-fixer fix --rules=@PSR12 --using-cache=no ."
         ],
-        "test": [
-            "@php tests/InstallCommandTest.php",
-            "@php tests/QueueIntegrationTest.php"
-        ]
+        "test": "@php tests/EntrypointsTest.php"
     }
 }

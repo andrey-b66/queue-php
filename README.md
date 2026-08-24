@@ -183,6 +183,7 @@ $queue->delete($job);
 | `push(Job $job): Job` | Добавить задание |
 | `findById(int $jobId): ?Job` | Получить задание по ID |
 | `findByQueueName(string $name, int $page = 1, int $limit = 50): Job[]` | Задания конкретной очереди |
+| `findNewByQueueName(string $name, int $page = 1, int $limit = 50): Job[]` | Только новые задания конкретной очереди, от старых к новым |
 | `findNew(...)`, `findProcessing(...)`, `findCompleted(...)`, `findFailed(...)` | Выборки по статусу |
 | `markProcessing(Job $job): ?Job` | Начать обработку |
 | `markCompleted(Job $job): ?Job` | Завершить успешно |

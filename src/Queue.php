@@ -20,16 +20,22 @@ class Queue
     }
 
     /**
-     * Получить задачи по типу
+     * Получить новые задачи конкретной очереди
+     * Порядок — от старых к новым, как у findNew.
+     *
      * @throws \Exception
      * @return Job[]
      */
-    public function findByQueueName(string $queueName, int $page = 1, int $limit = 50): array
+    public function findNewByQueueName(string $queueName, int $page = 1, int $limit = 50): array
     {
         try {
-            return $this->repository->findFiltered(['queue_name' => $queueName], $page, $limit);
+            return $this->repository->findFiltered([
+                'queue_name' => $queueName,
+                'status' => Job::STATUS_NEW,
+                'sort' => 'ASC',
+            ], $page, $limit);
         } catch (\Exception $e) {
-            throw new \Exception("Ошибка получения задач из очереди '$queueName': $e");
+            throw new \Exception("Ошибка получения новых задач из очереди '$queueName': $e");
         }
     }
 

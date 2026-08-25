@@ -27,7 +27,7 @@ final class QueueDashboard
 
     public function handle(): void
     {
-        $allowedLimits = [25, 50, 100, 200];
+        $allowedLimits = [25, 50, 100, 200, 500, 1000, 2000];
         $allowedStatuses = [
             Job::STATUS_NEW,
             Job::STATUS_PROCESSING,

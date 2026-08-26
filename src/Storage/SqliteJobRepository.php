@@ -22,6 +22,10 @@ class SqliteJobRepository
             $this->pdo->setAttribute(PDO::ATTR_ERRMODE, PDO::ERRMODE_EXCEPTION);
             $this->pdo->setAttribute(PDO::ATTR_DEFAULT_FETCH_MODE, PDO::FETCH_ASSOC);
 
+            $this->pdo->exec('PRAGMA busy_timeout = 5000');
+            $this->pdo->exec('PRAGMA journal_mode = WAL');
+            $this->pdo->exec('PRAGMA synchronous = NORMAL');
+
             $this->createJobsTable();
         } catch (PDOException $e) {
             throw new \Exception("Failed to initialize queue database: $e");

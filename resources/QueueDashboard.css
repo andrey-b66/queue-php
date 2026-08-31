@@ -189,7 +189,7 @@ button,
 
 table {
     width: 100%;
-    min-width: 1200px;
+    min-width: 1320px;
     border-collapse: collapse;
 }
 
@@ -250,15 +250,23 @@ td.select {
     font-size: 12px;
 }
 
-.error-text {
+.error-text,
+.result-text {
     min-width: 180px;
     max-width: 320px;
     margin: 0;
-    color: #b91c1c;
     white-space: pre-wrap;
     word-break: break-word;
     font-family: inherit;
     font-size: 12px;
+}
+
+.error-text {
+    color: #b91c1c;
+}
+
+.result-text {
+    color: #15803d;
 }
 
 /* Столбец payload забирает всю свободную ширину таблицы — JSON видно целиком */

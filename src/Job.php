@@ -18,9 +18,15 @@ class Job
     public string $updatedAt;
     public string $closedAt;
     public ?string $error = null;
+    /** Результат выполнения — заполняется по желанию, на обработку не влияет */
+    public ?string $result = null;
 
-    public static function create(string $queueName, string $source, string $payload): self
-    {
+    public static function create(
+        string $queueName,
+        string $source,
+        string $payload,
+        ?string $result = null,
+    ): self {
         $job = new self();
 
         $job->id = 0;
@@ -31,6 +37,7 @@ class Job
         $job->createdAt = date('Y-m-d H:i:s');
         $job->updatedAt = date('Y-m-d H:i:s');
         $job->closedAt = '';
+        $job->result = $result;
 
         return $job;
     }
@@ -44,21 +51,31 @@ class Job
         return $this;
     }
 
-    public function markCompleted(): self
+    public function markCompleted(?string $result = null): self
     {
         $this->status = self::STATUS_COMPLETED;
         $this->error = null;
         $this->updatedAt = date('Y-m-d H:i:s');
         $this->closedAt = date('Y-m-d H:i:s');
+
+        if ($result !== null) {
+            $this->result = $result;
+        }
+
         return $this;
     }
 
-    public function markFailed(?string $error = null): self
+    public function markFailed(?string $error = null, ?string $result = null): self
     {
         $this->status = self::STATUS_FAILED;
         $this->error = $error;
         $this->updatedAt = date('Y-m-d H:i:s');
         $this->closedAt = date('Y-m-d H:i:s');
+
+        if ($result !== null) {
+            $this->result = $result;
+        }
+
         return $this;
     }
 
@@ -78,6 +95,7 @@ class Job
         $job->updatedAt = (string) $row['updated_at'];
         $job->closedAt = (string) ($row['closed_at'] ?? '');
         $job->error = $row['error'] ?? null;
+        $job->result = $row['result'] ?? null;
 
         return $job;
     }
@@ -94,6 +112,7 @@ class Job
             'updated_at' => $this->updatedAt,
             'closed_at' => $this->closedAt,
             'error' => $this->error,
+            'result' => $this->result,
         ];
     }
 }

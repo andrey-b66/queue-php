@@ -64,6 +64,8 @@ file_put_contents(
     __DIR__ . '/../result.json',
     json_encode($payload, JSON_UNESCAPED_UNICODE | JSON_THROW_ON_ERROR),
 );
+
+return 'Обработано';
 PHP,
     );
 
@@ -71,11 +73,13 @@ PHP,
     $queue = new Queue($repository);
 
     // Кастомная точка входа.
-    $customJob = $queue->push(Job::create('custom', 'manual', '{"id":1}'));
+    $customJob = $queue->push(Job::create('custom', 'manual', '{"id":1}', 'Принято'));
     assertEntrypoint($queue->findById($customJob->id)?->source === 'manual', 'findById не работает');
+    assertEntrypoint($queue->findById($customJob->id)?->result === 'Принято', 'result не сохранён при создании');
     // assertEntrypoint($queue->findByQueueName('custom')[0]->id === $customJob->id, 'Фильтр очереди неверен');
     assertEntrypoint($queue->markProcessing($customJob)?->status === Job::STATUS_PROCESSING, 'Нет processing');
-    assertEntrypoint($queue->markCompleted($customJob)?->status === Job::STATUS_COMPLETED, 'Нет completed');
+    assertEntrypoint($queue->markCompleted($customJob, 'Готово')?->result === 'Готово', 'result не записан');
+    assertEntrypoint($queue->findById($customJob->id)?->status === Job::STATUS_COMPLETED, 'Нет completed');
     assertEntrypoint($queue->delete($customJob), 'Queue::delete не удалил задание');
 
     // HookWorker — единственная публичная точка готовой цепочки.
@@ -100,6 +104,7 @@ PHP,
     assertEntrypoint(is_file($lockFile), 'Worker не создал lock-файл');
     assertEntrypoint(file_get_contents($temporaryRoot . '/result.json') === '{"contact_id":42}', 'JSON не декодирован');
     assertEntrypoint($queue->findById($hookJob->id)?->status === Job::STATUS_COMPLETED, 'Hook не завершён');
+    assertEntrypoint($queue->findById($hookJob->id)?->result === 'Обработано', 'Результат хука не сохранён');
     assertEntrypoint($queue->findById($failedJob->id)?->status === Job::STATUS_FAILED, 'Ошибка не дала failed');
 
     // Административная точка входа и Dashboard.

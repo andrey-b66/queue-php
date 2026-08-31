@@ -237,7 +237,7 @@ final class QueueDashboard
                     type="text"
                     name="q"
                     value="<?= $this->escape($q) ?>"
-                    placeholder="ID, очередь, источник, payload или error"
+                    placeholder="ID, очередь, источник, payload, error или result"
                 >
             </div>
 
@@ -397,6 +397,7 @@ final class QueueDashboard
                         <th>source</th>
                         <th>status</th>
                         <th>error</th>
+                        <th>result</th>
                         <th>created_at</th>
                         <th>updated_at</th>
                         <th>closed_at</th>
@@ -406,7 +407,7 @@ final class QueueDashboard
                 <tbody>
                     <?php if ($rows === []): ?>
                         <tr>
-                            <td colspan="10" class="empty">
+                            <td colspan="11" class="empty">
                                 <?= $hasActiveFilters ? 'Ничего не найдено' : 'Задач нет' ?>
                             </td>
                         </tr>
@@ -415,6 +416,7 @@ final class QueueDashboard
                             <?php
                             $payloadText = $this->makeJsonReadable((string) $row['payload']);
                             $errorText = (string) ($row['error'] ?? '');
+                            $resultText = (string) ($row['result'] ?? '');
                             ?>
                             <tr>
                                 <td class="select">
@@ -451,6 +453,14 @@ final class QueueDashboard
                                 <td>
                                     <?php if ($errorText !== ''): ?>
                                         <pre class="error-text"><?= $this->highlight($errorText, $q) ?></pre>
+                                    <?php else: ?>
+                                        —
+                                    <?php endif; ?>
+                                </td>
+
+                                <td>
+                                    <?php if ($resultText !== ''): ?>
+                                        <pre class="result-text"><?= $this->highlight($resultText, $q) ?></pre>
                                     <?php else: ?>
                                         —
                                     <?php endif; ?>

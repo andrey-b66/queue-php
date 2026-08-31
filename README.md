@@ -87,6 +87,18 @@ error_log(json_encode($payload, JSON_UNESCAPED_UNICODE));
 
 Корректный JSON автоматически декодируется. Если тело не является JSON, `$payload` содержит исходную строку. В имени очереди разрешены буквы, цифры, `_` и `-`.
 
+Хук по желанию может вернуть результат выполнения — он сохранится в поле `result` задачи и будет виден в дашборде:
+
+```php
+<?php
+
+/** @var mixed $payload */
+
+return 'Создано сделок: 12';
+```
+
+Возврат необязателен: файл без `return` оставляет `result` пустым. Массив или объект сохраняются как JSON.
+
 Не объявляй глобальные функции или константы в hook-файле: за один запуск он может подключаться несколько раз.
 
 ### Запуск worker'а
@@ -137,7 +149,7 @@ $admin = new QueueAdmin(
 (new QueueDashboard($admin))->handle();
 ```
 
-Dashboard показывает поля новой модели, фильтрует по статусу, имени очереди и датам. Строковый поиск охватывает источник, payload, ошибку и остальные основные поля. Доступны массовая смена статуса и удаление.
+Dashboard показывает поля новой модели, фильтрует по статусу, имени очереди и датам. Строковый поиск охватывает источник, payload, ошибку, результат и остальные основные поля. Доступны массовая смена статуса и удаление.
 
 По умолчанию CSS встраивается из ресурсов пакета. Для отдельного CSS-файла передай URL вторым аргументом:
 
@@ -168,13 +180,24 @@ $queue->markProcessing($job);
 
 try {
     // Пользовательская обработка.
-    $queue->markCompleted($job);
+    $queue->markCompleted($job, 'Создано сделок: 12');
 } catch (Throwable $exception) {
     $queue->markFailed($job, $exception->getMessage());
 }
 
 $queue->delete($job);
 ```
+
+Поле `result` — необязательное. Оно живёт рядом с `error`: ошибка описывает провал, результат — что именно сделала успешная (или частично успешная) обработка. Заполнять его можно при завершении задачи или сразу при создании:
+
+```php
+Job::create('amo-events', 'amoCRM', '{"contact_id":42}', result: 'Поставлено в план');
+
+$queue->markCompleted($job, 'Создано сделок: 12');
+$queue->markFailed($job, $exception->getMessage(), 'Успели обработать 3 из 10');
+```
+
+Возврат задачи в `new` или `processing` через дашборд очищает `result` — задача будет выполняться заново.
 
 Основные методы `Queue`:
 
@@ -186,8 +209,8 @@ $queue->delete($job);
 | `findNewByQueueName(string $name, int $page = 1, int $limit = 50): Job[]` | Только новые задания конкретной очереди, от старых к новым |
 | `findNew(...)`, `findProcessing(...)`, `findCompleted(...)`, `findFailed(...)` | Выборки по статусу |
 | `markProcessing(Job $job): ?Job` | Начать обработку |
-| `markCompleted(Job $job): ?Job` | Завершить успешно |
-| `markFailed(Job $job, ?string $error = null): ?Job` | Завершить с ошибкой |
+| `markCompleted(Job $job, ?string $result = null): ?Job` | Завершить успешно, по желанию записав результат |
+| `markFailed(Job $job, ?string $error = null, ?string $result = null): ?Job` | Завершить с ошибкой |
 | `delete(int\|Job $job): bool` | Удалить одно задание |
 
 ## Статусы
@@ -208,7 +231,7 @@ new → processing → completed
 
 ```text
 id, queue_name, source, payload, status,
-created_at, updated_at, closed_at, error
+created_at, updated_at, closed_at, error, result
 ```
 
 Текущая версия рассчитана на новую чистую схему. Автоматическая миграция старых таблиц с `from_url`, `to_url` и `data` не выполняется.

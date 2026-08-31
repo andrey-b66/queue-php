@@ -12,6 +12,9 @@ use JsonException;
  * $payload. Что делать внутри — решает сам файл хука: вызвать сервис, встроить
  * сторонний код, что угодно. Никаких обязательных интерфейсов и шаблонов.
  *
+ * Хук по желанию может вернуть результат через `return` — он попадёт в поле
+ * `result` задачи.
+ *
  * @internal Используйте HookWorker как публичную точку входа.
  */
 final class HookExecutor
@@ -23,7 +26,10 @@ final class HookExecutor
         $this->hooksDir = rtrim($hooksDirectory, "/\\");
     }
 
-    public function handle(Job $job): void
+    /**
+     * @return string|null Результат, возвращённый хуком, либо null
+     */
+    public function handle(Job $job): ?string
     {
         $hookName = $job->queueName;
 
@@ -42,18 +48,39 @@ final class HookExecutor
             throw new \RuntimeException("Файл хука не найден: {$hookFile}");
         }
 
-        $this->run($hookFile, $this->decodePayload($job->payload));
+        return $this->run($hookFile, $this->decodePayload($job->payload));
     }
 
     /**
      * Выполняет файл хука в изолированной области видимости —
      * ему доступен только $payload.
      */
-    private function run(string $__hookFile, mixed $payload): void
+    private function run(string $__hookFile, mixed $payload): ?string
     {
-        (static function () use ($__hookFile, $payload): void {
-            require $__hookFile;
+        $result = (static function () use ($__hookFile, $payload): mixed {
+            return require $__hookFile;
         })();
+
+        return $this->normalizeResult($result);
+    }
+
+    /**
+     * Файл без `return` отдаёт из require единицу — считаем, что хук
+     * результата не сообщил. Массивы и объекты сохраняем как JSON.
+     */
+    private function normalizeResult(mixed $result): ?string
+    {
+        if ($result === null || is_bool($result) || $result === 1) {
+            return null;
+        }
+
+        if (is_scalar($result)) {
+            return (string) $result;
+        }
+
+        $encoded = json_encode($result, JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES);
+
+        return $encoded === false ? null : $encoded;
     }
 
     private function decodePayload(string $payload): mixed

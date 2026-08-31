@@ -123,19 +123,23 @@ class Queue
 
     /**
      * Отметить задачу как выполненную
+     *
+     * @param string|null $result Результат выполнения, заполняется по желанию
      */
-    public function markCompleted(Job $job): ?Job
+    public function markCompleted(Job $job, ?string $result = null): ?Job
     {
-        $job->markCompleted();
+        $job->markCompleted($result);
         return $this->repository->updateStatus($job);
     }
 
     /**
      * Отметить задачу как проваленную
+     *
+     * @param string|null $result Результат выполнения, заполняется по желанию
      */
-    public function markFailed(Job $job, ?string $error = null): ?Job
+    public function markFailed(Job $job, ?string $error = null, ?string $result = null): ?Job
     {
-        $job->markFailed($error);
+        $job->markFailed($error, $result);
         return $this->repository->updateStatus($job);
     }
 

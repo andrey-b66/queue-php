@@ -74,6 +74,8 @@ final class HookWorker
 
     private function process(Job $job): bool
     {
+        $result = null;
+
         try {
             $processingJob = $this->queue->markProcessing($job);
 
@@ -83,7 +85,7 @@ final class HookWorker
             }
 
             $job = $processingJob;
-            $this->hookExecutor->handle($job);
+            $result = $this->hookExecutor->handle($job);
         } catch (Throwable $exception) {
             error_log("Задача {$job->id} провалена: " . $exception->getMessage());
 
@@ -99,7 +101,7 @@ final class HookWorker
         }
 
         try {
-            return $this->queue->markCompleted($job) !== null;
+            return $this->queue->markCompleted($job, $result) !== null;
         } catch (Throwable $exception) {
             error_log("Не удалось завершить задачу {$job->id}: " . $exception->getMessage());
             return false;

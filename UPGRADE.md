@@ -18,7 +18,7 @@ composer require integrat/queue:^2.0 -W
 
 ```text
 id, queue_name, source, payload, status,
-created_at, updated_at, closed_at, error
+created_at, updated_at, closed_at, error, result
 ```
 
 Перед обновлением при необходимости сделайте резервную копию старой базы, затем удалите её или укажите новый путь. Новая таблица создастся автоматически.
@@ -44,7 +44,8 @@ created_at, updated_at, closed_at, error
 - `queue.php` заменён на `dashboard.php`, который создаёт `QueueAdmin` и передаёт его в `QueueDashboard`;
 - `scripts/cron-queue-worker.php` заменён на `scripts/hook-worker.php`;
 - `HookWorker` сам создаёт lock-файл рядом с SQLite-базой, поэтому аргумент `lockFile` больше не передаётся;
-- hook-файлы получают декодированный JSON либо исходную строку в `$payload`.
+- hook-файлы получают декодированный JSON либо исходную строку в `$payload`;
+- у задачи появилось необязательное поле `result` для результата выполнения: его можно передать в `Job::create()`, в `markCompleted()`/`markFailed()` или вернуть из hook-файла через `return`.
 
 Команда установки намеренно не перезаписывает существующие файлы, поэтому обновить их нужно вручную по примерам из README. После этого можно создать только нужный набор или оба сразу:
 

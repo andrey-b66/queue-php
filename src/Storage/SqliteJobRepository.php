@@ -43,7 +43,8 @@ class SqliteJobRepository
             created_at TEXT NOT NULL,
             updated_at TEXT NOT NULL,
             closed_at TEXT NOT NULL,
-            error TEXT
+            error TEXT,
+            result TEXT
         )";
         $this->pdo->exec($query);
     }
@@ -58,7 +59,8 @@ class SqliteJobRepository
             created_at,
             updated_at,
             closed_at,
-            error
+            error,
+            result
         ) VALUES (
             :queue_name,
             :source,
@@ -67,7 +69,8 @@ class SqliteJobRepository
             :created_at,
             :updated_at,
             :closed_at,
-            :error
+            :error,
+            :result
         )";
 
         $stmt = $this->pdo->prepare($sql);
@@ -81,6 +84,7 @@ class SqliteJobRepository
             ':updated_at' => $job->updatedAt,
             ':closed_at' => $job->closedAt,
             ':error' => $job->error,
+            ':result' => $job->result,
         ]);
 
         // После вставки получаем полный объект из БД
@@ -117,7 +121,7 @@ class SqliteJobRepository
 
     /**
      * Свободный поиск по подстроке во всех значимых колонках.
-     * Ищет по имени очереди, источнику, payload, статусу, ошибке и ID.
+     * Ищет по имени очереди, источнику, payload, статусу, ошибке, результату и ID.
      *
      * @return Job[]
      */
@@ -135,6 +139,7 @@ class SqliteJobRepository
                    OR payload LIKE :like ESCAPE '\\'
                    OR status LIKE :like ESCAPE '\\'
                    OR error LIKE :like ESCAPE '\\'
+                   OR result LIKE :like ESCAPE '\\'
                    OR CAST(id AS TEXT) LIKE :like ESCAPE '\\'
                 ORDER BY created_at DESC, id DESC
                 LIMIT :limit OFFSET :offset";
@@ -282,6 +287,7 @@ class SqliteJobRepository
                      OR payload LIKE :q ESCAPE '\\'
                      OR status LIKE :q ESCAPE '\\'
                      OR error LIKE :q ESCAPE '\\'
+                     OR result LIKE :q ESCAPE '\\'
                      OR CAST(id AS TEXT) LIKE :q ESCAPE '\\')";
         }
 
@@ -304,7 +310,8 @@ class SqliteJobRepository
                 SET status = :status,
                     updated_at = :updated_at,
                     closed_at = :closed_at,
-                    error = :error
+                    error = :error,
+                    result = :result
                 WHERE id = :id";
 
         $stmt = $this->pdo->prepare($sql);
@@ -314,6 +321,7 @@ class SqliteJobRepository
             ':updated_at' => $job->updatedAt,
             ':closed_at' => $job->closedAt,
             ':error' => $job->error,
+            ':result' => $job->result,
         ]);
 
         if ($stmt->rowCount() === 0) {
@@ -328,6 +336,8 @@ class SqliteJobRepository
      *
      * Ошибка сбрасывается, если новый статус не `failed` — она относилась
      * к прошлому прогону и для new/processing/completed уже неактуальна.
+     * Результат сбрасывается при возврате в `new`/`processing`: задача будет
+     * выполняться заново, поэтому прошлый результат к ней больше не относится.
      *
      * @param int[] $ids
      * @return int Количество затронутых задач
@@ -350,6 +360,10 @@ class SqliteJobRepository
 
         if ($status !== Job::STATUS_FAILED) {
             $sql .= ', error = NULL';
+        }
+
+        if (in_array($status, [Job::STATUS_NEW, Job::STATUS_PROCESSING], true)) {
+            $sql .= ', result = NULL';
         }
 
         $sql .= ' WHERE id IN (' . implode(', ', $placeholders) . ')';

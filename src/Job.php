@@ -18,7 +18,6 @@ class Job
     public string $updatedAt;
     public string $closedAt;
     public ?string $error = null;
-    /** Результат выполнения — заполняется по желанию, на обработку не влияет */
     public ?string $result = null;
 
     public static function create(

@@ -121,7 +121,10 @@ class SqliteJobRepository
     {
         $offset = ($page - 1) * $limit;
 
-        [$where, $params] = $this->buildFilterConditions($filters);
+        $conditions = $this->buildFilterConditions($filters);
+        $where = $conditions['where'];
+        $params = $conditions['params'];
+
         $sort = strtoupper((string) ($filters['sort'] ?? 'DESC'));
 
         if (!in_array($sort, ['ASC', 'DESC'], true)) {
@@ -142,10 +145,13 @@ class SqliteJobRepository
         $stmt->bindValue(':offset', $offset, PDO::PARAM_INT);
         $stmt->execute();
 
-        return array_map(
-            fn ($row) => Job::fromDatabase($row),
-            $stmt->fetchAll()
-        );
+        $jobs = [];
+
+        foreach ($stmt->fetchAll() as $row) {
+            $jobs[] = Job::fromDatabase($row);
+        }
+
+        return $jobs;
     }
 
     /**
@@ -162,7 +168,9 @@ class SqliteJobRepository
      */
     public function countFiltered(array $filters = []): int
     {
-        [$where, $params] = $this->buildFilterConditions($filters);
+        $conditions = $this->buildFilterConditions($filters);
+        $where = $conditions['where'];
+        $params = $conditions['params'];
 
         $sql = 'SELECT COUNT(*) FROM jobs';
         if ($where !== []) {
@@ -204,7 +212,7 @@ class SqliteJobRepository
      *     created_from?: string,
      *     created_to?: string
      * } $filters
-     * @return array{0: array<int, string>, 1: array<string, string>}
+     * @return array{where: array<int, string>, params: array<string, string>}
      */
     private function buildFilterConditions(array $filters): array
     {
@@ -248,7 +256,10 @@ class SqliteJobRepository
             $params[':created_to'] = $filters['created_to'] . ' 23:59:59';
         }
 
-        return [$where, $params];
+        return [
+            'where' => $where,
+            'params' => $params,
+        ];
     }
 
     public function updateStatus(Job $job): ?Job
@@ -291,7 +302,9 @@ class SqliteJobRepository
      */
     public function updateStatusByIds(array $ids, string $status): int
     {
-        [$placeholders, $params] = $this->buildIdPlaceholders($ids);
+        $prepared = $this->buildIdPlaceholders($ids);
+        $placeholders = $prepared['placeholders'];
+        $params = $prepared['params'];
 
         if ($placeholders === []) {
             return 0;
@@ -337,7 +350,9 @@ class SqliteJobRepository
      */
     public function deleteByIds(array $ids): int
     {
-        [$placeholders, $params] = $this->buildIdPlaceholders($ids);
+        $prepared = $this->buildIdPlaceholders($ids);
+        $placeholders = $prepared['placeholders'];
+        $params = $prepared['params'];
 
         if ($placeholders === []) {
             return 0;
@@ -360,7 +375,7 @@ class SqliteJobRepository
      * Готовит именованные плейсхолдеры для условия `id IN (...)`.
      *
      * @param int[] $ids
-     * @return array{0: array<int, string>, 1: array<string, int>}
+     * @return array{placeholders: array<int, string>, params: array<string, int>}
      */
     private function buildIdPlaceholders(array $ids): array
     {
@@ -375,7 +390,10 @@ class SqliteJobRepository
             $index++;
         }
 
-        return [$placeholders, $params];
+        return [
+            'placeholders' => $placeholders,
+            'params' => $params,
+        ];
     }
 
     public function deleteOldRecords(int $daysToKeep = 30): int

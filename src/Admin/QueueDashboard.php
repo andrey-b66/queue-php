@@ -619,7 +619,7 @@ final class QueueDashboard
         return htmlspecialchars(
             (string) $value,
             ENT_QUOTES,
-            'UTF-8',
+            'UTF-8'
         );
     }
 
@@ -696,7 +696,7 @@ final class QueueDashboard
         $decoded = $this->decodeNestedJson($decoded);
         $result = json_encode(
             $decoded,
-            JSON_PRETTY_PRINT | JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES,
+            JSON_PRETTY_PRINT | JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES
         );
 
         if ($result === false) {
@@ -750,7 +750,7 @@ final class QueueDashboard
         return str_replace(
             ['\\r\\n', '\\n'],
             "\n",
-            $value,
+            $value
         );
     }
 }

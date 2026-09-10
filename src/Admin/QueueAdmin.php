@@ -34,10 +34,13 @@ final class QueueAdmin
      */
     public function findFiltered(array $filters = [], int $page = 1, int $limit = 50): array
     {
-        return array_map(
-            static fn (Job $job): array => $job->toArray(),
-            $this->repository->findFiltered($filters, $page, $limit),
-        );
+        $rows = [];
+
+        foreach ($this->repository->findFiltered($filters, $page, $limit) as $job) {
+            $rows[] = $job->toArray();
+        }
+
+        return $rows;
     }
 
     /**

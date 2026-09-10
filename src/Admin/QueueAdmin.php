@@ -25,7 +25,7 @@ final class QueueAdmin
      *     status?: string,
      *     type?: string,
      *     source?: string,
-     *     q?: string,
+     *     search?: string,
      *     created_from?: string,
      *     created_to?: string,
      *     sort?: 'ASC'|'DESC'

@@ -66,7 +66,7 @@ final class QueueDashboard
             }
 
             $back = [
-                'q' => trim((string) ($_POST['q'] ?? '')),
+                'search' => trim((string) ($_POST['search'] ?? '')),
                 'status' => (string) ($_POST['status'] ?? ''),
                 'type' => trim((string) ($_POST['type'] ?? '')),
                 'created_from' => $this->normalizeDate($_POST['created_from'] ?? ''),
@@ -122,7 +122,7 @@ final class QueueDashboard
         $page = max(1, (int) ($_GET['page'] ?? 1));
         $status = (string) ($_GET['status'] ?? '');
         $type = trim((string) ($_GET['type'] ?? ''));
-        $q = trim((string) ($_GET['q'] ?? ''));
+        $search = trim((string) ($_GET['search'] ?? ''));
         $createdFrom = $this->normalizeDate($_GET['created_from'] ?? '');
         $createdTo = $this->normalizeDate($_GET['created_to'] ?? '');
 
@@ -137,7 +137,7 @@ final class QueueDashboard
         $filters = [
             'status' => $status,
             'type' => $type,
-            'q' => $q,
+            'search' => $search,
             'created_from' => $createdFrom,
             'created_to' => $createdTo,
         ];
@@ -153,14 +153,14 @@ final class QueueDashboard
             Job::STATUS_FAILED => '#b91c1c',
         ];
 
-        $hasActiveFilters = $q !== ''
+        $hasActiveFilters = $search !== ''
             || $status !== ''
             || $type !== ''
             || $createdFrom !== ''
             || $createdTo !== '';
 
         $listUrl = function (array $overrides = []) use (
-            $q,
+            $search,
             $status,
             $type,
             $createdFrom,
@@ -169,7 +169,7 @@ final class QueueDashboard
             $page
         ): string {
             $params = [
-                'q' => $q,
+                'search' => $search,
                 'status' => $status,
                 'type' => $type,
                 'created_from' => $createdFrom,
@@ -234,12 +234,12 @@ final class QueueDashboard
     <form class="panel" method="get">
         <div class="filter-grid">
             <div class="field">
-                <label for="q">Поиск</label>
+                <label for="search">Поиск</label>
                 <input
-                    id="q"
+                    id="search"
                     type="text"
-                    name="q"
-                    value="<?= $this->escape($q) ?>"
+                    name="search"
+                    value="<?= $this->escape($search) ?>"
                     placeholder="ID, тип, источник, payload, error или result"
                 >
             </div>
@@ -344,7 +344,7 @@ final class QueueDashboard
         <input type="hidden" name="page" value="<?= $this->escape($page) ?>">
         <input type="hidden" name="status" value="<?= $this->escape($status) ?>">
         <input type="hidden" name="type" value="<?= $this->escape($type) ?>">
-        <input type="hidden" name="q" value="<?= $this->escape($q) ?>">
+        <input type="hidden" name="search" value="<?= $this->escape($search) ?>">
         <input type="hidden" name="created_from" value="<?= $this->escape($createdFrom) ?>">
         <input type="hidden" name="created_to" value="<?= $this->escape($createdTo) ?>">
 
@@ -433,15 +433,15 @@ final class QueueDashboard
                                 </td>
 
                                 <td class="id">
-                                    <?= $this->highlight($row['id'], $q) ?>
+                                    <?= $this->highlight($row['id'], $search) ?>
                                 </td>
 
                                 <td class="job-type">
-                                    <?= $this->highlight($row['type'], $q) ?>
+                                    <?= $this->highlight($row['type'], $search) ?>
                                 </td>
 
                                 <td class="source">
-                                    <?= $this->highlight($row['source'], $q) ?>
+                                    <?= $this->highlight($row['source'], $search) ?>
                                 </td>
 
                                 <td>
@@ -449,13 +449,13 @@ final class QueueDashboard
                                         class="badge"
                                         style="background: <?= $this->escape($statusColors[$row['status']] ?? '#6b7280') ?>"
                                     >
-                                        <?= $this->highlight($row['status'], $q) ?>
+                                        <?= $this->highlight($row['status'], $search) ?>
                                     </span>
                                 </td>
 
                                 <td>
                                     <?php if ($errorText !== ''): ?>
-                                        <pre class="error-text"><?= $this->highlight($errorText, $q) ?></pre>
+                                        <pre class="error-text"><?= $this->highlight($errorText, $search) ?></pre>
                                     <?php else: ?>
                                         —
                                     <?php endif; ?>
@@ -463,7 +463,7 @@ final class QueueDashboard
 
                                 <td>
                                     <?php if ($resultText !== ''): ?>
-                                        <pre class="result-text"><?= $this->highlight($resultText, $q) ?></pre>
+                                        <pre class="result-text"><?= $this->highlight($resultText, $search) ?></pre>
                                     <?php else: ?>
                                         —
                                     <?php endif; ?>
@@ -482,9 +482,9 @@ final class QueueDashboard
                                 </td>
 
                                 <td class="payload-cell">
-                                    <details class="payload" <?= $q !== '' ? 'open' : '' ?>>
+                                    <details class="payload" <?= $search !== '' ? 'open' : '' ?>>
                                         <summary>Показать данные</summary>
-                                        <pre><?= $this->expandEscapedNewLines($this->highlight($payloadText, $q)) ?></pre>
+                                        <pre><?= $this->expandEscapedNewLines($this->highlight($payloadText, $search)) ?></pre>
                                     </details>
                                 </td>
                             </tr>
@@ -513,7 +513,7 @@ final class QueueDashboard
         <?php endif; ?>
 
         <form class="page-size-form" method="get">
-            <input type="hidden" name="q" value="<?= $this->escape($q) ?>">
+            <input type="hidden" name="search" value="<?= $this->escape($search) ?>">
             <input type="hidden" name="status" value="<?= $this->escape($status) ?>">
             <input type="hidden" name="type" value="<?= $this->escape($type) ?>">
             <input type="hidden" name="created_from" value="<?= $this->escape($createdFrom) ?>">
@@ -643,16 +643,16 @@ final class QueueDashboard
     /**
      * @param mixed $value
      */
-    private function highlight($value, string $query): string
+    private function highlight($value, string $search): string
     {
         $escapedValue = $this->escape($value);
 
-        if ($query === '') {
+        if ($search === '') {
             return $escapedValue;
         }
 
-        $escapedQuery = $this->escape($query);
-        $pattern = '/' . preg_quote($escapedQuery, '/') . '/iu';
+        $escapedSearch = $this->escape($search);
+        $pattern = '/' . preg_quote($escapedSearch, '/') . '/iu';
         $highlighted = preg_replace($pattern, '<mark>$0</mark>', $escapedValue);
 
         if ($highlighted === null) {

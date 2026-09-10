@@ -110,7 +110,7 @@ class SqliteJobRepository
      *     status?: string,
      *     type?: string,
      *     source?: string,
-     *     q?: string,
+     *     search?: string,
      *     created_from?: string,
      *     created_to?: string,
      *     sort?: 'ASC'|'DESC'
@@ -155,7 +155,7 @@ class SqliteJobRepository
      *     status?: string,
      *     type?: string,
      *     source?: string,
-     *     q?: string,
+     *     search?: string,
      *     created_from?: string,
      *     created_to?: string
      * } $filters
@@ -200,7 +200,7 @@ class SqliteJobRepository
      *     status?: string,
      *     type?: string,
      *     source?: string,
-     *     q?: string,
+     *     search?: string,
      *     created_from?: string,
      *     created_to?: string
      * } $filters
@@ -226,16 +226,16 @@ class SqliteJobRepository
             $params[':source'] = $filters['source'];
         }
 
-        if (isset($filters['q']) && $filters['q'] !== '') {
-            $q = str_replace(['\\', '%', '_'], ['\\\\', '\\%', '\\_'], $filters['q']);
-            $params[':q'] = '%' . $q . '%';
-            $where[] = "(type LIKE :q ESCAPE '\\'
-                     OR source LIKE :q ESCAPE '\\'
-                     OR payload LIKE :q ESCAPE '\\'
-                     OR status LIKE :q ESCAPE '\\'
-                     OR error LIKE :q ESCAPE '\\'
-                     OR result LIKE :q ESCAPE '\\'
-                     OR CAST(id AS TEXT) LIKE :q ESCAPE '\\')";
+        if (isset($filters['search']) && $filters['search'] !== '') {
+            $search = str_replace(['\\', '%', '_'], ['\\\\', '\\%', '\\_'], $filters['search']);
+            $params[':search'] = '%' . $search . '%';
+            $where[] = "(type LIKE :search ESCAPE '\\'
+                     OR source LIKE :search ESCAPE '\\'
+                     OR payload LIKE :search ESCAPE '\\'
+                     OR status LIKE :search ESCAPE '\\'
+                     OR error LIKE :search ESCAPE '\\'
+                     OR result LIKE :search ESCAPE '\\'
+                     OR CAST(id AS TEXT) LIKE :search ESCAPE '\\')";
         }
 
         if (!empty($filters['created_from'])) {

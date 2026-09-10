@@ -35,7 +35,7 @@ final class QueueDashboard
             Job::STATUS_FAILED,
         ];
 
-        $availableQueueNames = $this->admin->getQueueNames();
+        $availableTypes = $this->admin->getTypes();
 
         $requestUri = (string) ($_SERVER['REQUEST_URI'] ?? '');
         $basePath = strtok($requestUri, '?');
@@ -65,7 +65,7 @@ final class QueueDashboard
             $back = [
                 'q' => trim((string) ($_POST['q'] ?? '')),
                 'status' => (string) ($_POST['status'] ?? ''),
-                'queue_name' => trim((string) ($_POST['queue_name'] ?? '')),
+                'type' => trim((string) ($_POST['type'] ?? '')),
                 'created_from' => $this->normalizeDate($_POST['created_from'] ?? ''),
                 'created_to' => $this->normalizeDate($_POST['created_to'] ?? ''),
                 'limit' => $postLimit === 50 ? '' : $postLimit,
@@ -118,7 +118,7 @@ final class QueueDashboard
 
         $page = max(1, (int) ($_GET['page'] ?? 1));
         $status = (string) ($_GET['status'] ?? '');
-        $queueName = trim((string) ($_GET['queue_name'] ?? ''));
+        $type = trim((string) ($_GET['type'] ?? ''));
         $q = trim((string) ($_GET['q'] ?? ''));
         $createdFrom = $this->normalizeDate($_GET['created_from'] ?? '');
         $createdTo = $this->normalizeDate($_GET['created_to'] ?? '');
@@ -127,13 +127,13 @@ final class QueueDashboard
             $status = '';
         }
 
-        if (!in_array($queueName, $availableQueueNames, true)) {
-            $queueName = '';
+        if (!in_array($type, $availableTypes, true)) {
+            $type = '';
         }
 
         $filters = [
             'status' => $status,
-            'queue_name' => $queueName,
+            'type' => $type,
             'q' => $q,
             'created_from' => $createdFrom,
             'created_to' => $createdTo,
@@ -152,14 +152,14 @@ final class QueueDashboard
 
         $hasActiveFilters = $q !== ''
             || $status !== ''
-            || $queueName !== ''
+            || $type !== ''
             || $createdFrom !== ''
             || $createdTo !== '';
 
         $listUrl = function (array $overrides = []) use (
             $q,
             $status,
-            $queueName,
+            $type,
             $createdFrom,
             $createdTo,
             $perPage,
@@ -168,7 +168,7 @@ final class QueueDashboard
             $params = [
                 'q' => $q,
                 'status' => $status,
-                'queue_name' => $queueName,
+                'type' => $type,
                 'created_from' => $createdFrom,
                 'created_to' => $createdTo,
                 'limit' => $perPage === 50 ? null : $perPage,
@@ -237,7 +237,7 @@ final class QueueDashboard
                     type="text"
                     name="q"
                     value="<?= $this->escape($q) ?>"
-                    placeholder="ID, очередь, источник, payload, error или result"
+                    placeholder="ID, тип, источник, payload, error или result"
                 >
             </div>
 
@@ -257,15 +257,15 @@ final class QueueDashboard
             </div>
 
             <div class="field">
-                <label for="queue_name">Очередь</label>
-                <select id="queue_name" name="queue_name">
-                    <option value="">Все очереди</option>
-                    <?php foreach ($availableQueueNames as $availableQueueName): ?>
+                <label for="type">Тип</label>
+                <select id="type" name="type">
+                    <option value="">Все типы</option>
+                    <?php foreach ($availableTypes as $availableType): ?>
                         <option
-                            value="<?= $this->escape($availableQueueName) ?>"
-                            <?= $queueName === $availableQueueName ? 'selected' : '' ?>
+                            value="<?= $this->escape($availableType) ?>"
+                            <?= $type === $availableType ? 'selected' : '' ?>
                         >
-                            <?= $this->escape($availableQueueName) ?>
+                            <?= $this->escape($availableType) ?>
                         </option>
                     <?php endforeach; ?>
                 </select>
@@ -340,7 +340,7 @@ final class QueueDashboard
         <input type="hidden" name="limit" value="<?= $this->escape($perPage) ?>">
         <input type="hidden" name="page" value="<?= $this->escape($page) ?>">
         <input type="hidden" name="status" value="<?= $this->escape($status) ?>">
-        <input type="hidden" name="queue_name" value="<?= $this->escape($queueName) ?>">
+        <input type="hidden" name="type" value="<?= $this->escape($type) ?>">
         <input type="hidden" name="q" value="<?= $this->escape($q) ?>">
         <input type="hidden" name="created_from" value="<?= $this->escape($createdFrom) ?>">
         <input type="hidden" name="created_to" value="<?= $this->escape($createdTo) ?>">
@@ -393,7 +393,7 @@ final class QueueDashboard
                             >
                         </th>
                         <th>id</th>
-                        <th>queue_name</th>
+                        <th>type</th>
                         <th>source</th>
                         <th>status</th>
                         <th>error</th>
@@ -433,8 +433,8 @@ final class QueueDashboard
                                     <?= $this->highlight($row['id'], $q) ?>
                                 </td>
 
-                                <td class="queue-name">
-                                    <?= $this->highlight($row['queue_name'], $q) ?>
+                                <td class="job-type">
+                                    <?= $this->highlight($row['type'], $q) ?>
                                 </td>
 
                                 <td class="source">
@@ -475,7 +475,7 @@ final class QueueDashboard
                                 </td>
 
                                 <td class="date">
-                                    <?= $row['closed_at'] === '' ? '—' : $this->escape($row['closed_at']) ?>
+                                    <?= ($row['closed_at'] ?? '') === '' ? '—' : $this->escape($row['closed_at']) ?>
                                 </td>
 
                                 <td class="payload-cell">
@@ -512,7 +512,7 @@ final class QueueDashboard
         <form class="page-size-form" method="get">
             <input type="hidden" name="q" value="<?= $this->escape($q) ?>">
             <input type="hidden" name="status" value="<?= $this->escape($status) ?>">
-            <input type="hidden" name="queue_name" value="<?= $this->escape($queueName) ?>">
+            <input type="hidden" name="type" value="<?= $this->escape($type) ?>">
             <input type="hidden" name="created_from" value="<?= $this->escape($createdFrom) ?>">
             <input type="hidden" name="created_to" value="<?= $this->escape($createdTo) ?>">
 

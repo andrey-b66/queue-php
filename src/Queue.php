@@ -13,98 +13,48 @@ class Queue
 
     /**
      * Добавить задачу в очередь
+     *
+     * @throws \Exception
      */
     public function push(Job $job): Job
     {
-        return $this->repository->create($job);
+        try {
+            return $this->repository->create($job);
+        } catch (\Exception $e) {
+            // Задача в БД не легла — выкладываем её в лог PHP,
+            // чтобы payload можно было восстановить руками.
+            error_log(sprintf(
+                'Не удалось добавить задачу в очередь: type=%s source=%s payload=%s',
+                $job->type,
+                $job->source,
+                $job->payload
+            ));
+
+            throw new \Exception("Ошибка при добавлении задачи в очередь '{$job->type}': $e");
+        }
     }
 
     /**
-     * Получить новые задачи конкретной очереди
-     * Порядок — от старых к новым, как у findNew.
+     * Получить задачи по фильтрам.
      *
-     * @throws \Exception
+     * Фильтры комбинируются через AND, пустые значения игнорируются.
+     * Порядок по умолчанию — от старых к новым: очередь разбирается FIFO.
+     * Передайте 'sort' => 'DESC', чтобы получить сначала свежие.
+     *
+     * @param array{
+     *     status?: string,
+     *     type?: string,
+     *     source?: string,
+     *     q?: string,
+     *     created_from?: string,
+     *     created_to?: string,
+     *     sort?: 'ASC'|'DESC'
+     * } $filters
      * @return Job[]
      */
-    public function findNewByQueueName(string $queueName, int $page = 1, int $limit = 50): array
+    public function find(array $filters = [], int $page = 1, int $limit = 50): array
     {
-        try {
-            return $this->repository->findFiltered([
-                'queue_name' => $queueName,
-                'status' => Job::STATUS_NEW,
-                'sort' => 'ASC',
-            ], $page, $limit);
-        } catch (\Exception $e) {
-            throw new \Exception("Ошибка получения новых задач из очереди '$queueName': $e");
-        }
-    }
-
-    /**
-     * Получить все новые задачи
-     * @throws \Exception
-     * @return Job[]
-     */
-    public function findNew(int $page = 1, int $limit = 50): array
-    {
-        try {
-            return $this->repository->findFiltered([
-                'status' => Job::STATUS_NEW,
-                'sort' => 'ASC',
-            ], $page, $limit);
-        } catch (\Exception $e) {
-            throw new \Exception("Ошибка при получении новых задач: $e");
-        }
-    }
-
-    /**
-     * Получить задачи которые выполняются
-     * @throws \Exception
-     * @return Job[]
-     */
-    public function findProcessing(int $page = 1, int $limit = 50): array
-    {
-        try {
-            return $this->repository->findFiltered([
-                'status' => Job::STATUS_PROCESSING,
-                'sort' => 'ASC',
-            ], $page, $limit);
-        } catch (\Exception $e) {
-            throw new \Exception("Ошибка при получении задач которые в процессе выполнения: $e");
-        }
-    }
-
-    /**
-     * Получить выполненные задачи
-     * @throws \Exception
-     * @return Job[]
-     */
-    public function findCompleted(int $page = 1, int $limit = 50): array
-    {
-        try {
-            return $this->repository->findFiltered([
-                'status' => Job::STATUS_COMPLETED,
-                'sort' => 'ASC',
-            ], $page, $limit);
-        } catch (\Exception $e) {
-            throw new \Exception("Ошибка при получении выполненных задач: $e");
-        }
-    }
-
-    /**
-     * Получить проваленные задачи
-     * @throws \Exception
-     * @return Job[]
-     */
-    public function findFailed(int $page = 1, int $limit = 50): array
-    {
-        try {
-            return $this->repository->findFiltered([
-                'status' => Job::STATUS_FAILED,
-                'sort' => 'ASC',
-            ], $page, $limit);
-        } catch (\Exception $e) {
-            throw new \Exception("Ошибка при получении проваленных задач: $e");
-        }
+        return $this->repository->findFiltered($filters + ['sort' => 'ASC'], $page, $limit);
     }
 
     public function findById(int $jobId): ?Job
@@ -147,6 +97,6 @@ class Queue
     {
         $jobId = $job instanceof Job ? $job->id : $job;
 
-        return $jobId > 0 && $this->repository->deleteByIds([$jobId]) === 1;
+        return $jobId !== null && $jobId > 0 && $this->repository->deleteByIds([$jobId]) === 1;
     }
 }

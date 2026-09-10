@@ -9,33 +9,34 @@ class Job
     public const STATUS_COMPLETED = 'completed';
     public const STATUS_FAILED = 'failed';
 
-    public int $id;
-    public string $queueName;
+    /** null — задача ещё не сохранена */
+    public ?int $id = null;
+
+    /** Тип задачи: стабильный ярлык, по которому подбирается обработчик */
+    public string $type;
     public string $source;
     public string $payload;
     public string $status;
     public string $createdAt;
     public string $updatedAt;
-    public string $closedAt;
+    public ?string $closedAt = null;
     public ?string $error = null;
     public ?string $result = null;
 
     public static function create(
-        string $queueName,
+        string $type,
         string $source,
         string $payload,
         ?string $result = null,
     ): self {
         $job = new self();
 
-        $job->id = 0;
-        $job->queueName = $queueName;
+        $job->type = $type;
         $job->source = $source;
         $job->payload = $payload;
         $job->status = self::STATUS_NEW;
         $job->createdAt = date('Y-m-d H:i:s');
         $job->updatedAt = date('Y-m-d H:i:s');
-        $job->closedAt = '';
         $job->result = $result;
 
         return $job;
@@ -46,7 +47,7 @@ class Job
         $this->status = self::STATUS_PROCESSING;
         $this->error = null;
         $this->updatedAt = date('Y-m-d H:i:s');
-        $this->closedAt = '';
+        $this->closedAt = null;
         return $this;
     }
 
@@ -86,13 +87,13 @@ class Job
         $job = new self();
 
         $job->id = (int) $row['id'];
-        $job->queueName = (string) $row['queue_name'];
+        $job->type = (string) $row['type'];
         $job->source = (string) $row['source'];
         $job->payload = (string) $row['payload'];
         $job->status = (string) $row['status'];
         $job->createdAt = (string) $row['created_at'];
         $job->updatedAt = (string) $row['updated_at'];
-        $job->closedAt = (string) ($row['closed_at'] ?? '');
+        $job->closedAt = $row['closed_at'] ?? null;
         $job->error = $row['error'] ?? null;
         $job->result = $row['result'] ?? null;
 
@@ -103,7 +104,7 @@ class Job
     {
         return [
             'id' => $this->id,
-            'queue_name' => $this->queueName,
+            'type' => $this->type,
             'source' => $this->source,
             'payload' => $this->payload,
             'status' => $this->status,

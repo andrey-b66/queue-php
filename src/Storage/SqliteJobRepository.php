@@ -36,13 +36,13 @@ class SqliteJobRepository
     {
         $query = "CREATE TABLE IF NOT EXISTS jobs (
             id INTEGER PRIMARY KEY AUTOINCREMENT,
-            queue_name TEXT NOT NULL,
-            source TEXT NOT NULL,
-            payload TEXT NOT NULL,
-            status TEXT NOT NULL,
-            created_at TEXT NOT NULL,
-            updated_at TEXT NOT NULL,
-            closed_at TEXT NOT NULL,
+            type TEXT,
+            source TEXT,
+            payload TEXT,
+            status TEXT,
+            created_at TEXT,
+            updated_at TEXT,
+            closed_at TEXT,
             error TEXT,
             result TEXT
         )";
@@ -52,7 +52,7 @@ class SqliteJobRepository
     public function create(Job $job): Job
     {
         $sql = "INSERT INTO jobs (
-            queue_name,
+            type,
             source,
             payload,
             status,
@@ -62,7 +62,7 @@ class SqliteJobRepository
             error,
             result
         ) VALUES (
-            :queue_name,
+            :type,
             :source,
             :payload,
             :status,
@@ -76,7 +76,7 @@ class SqliteJobRepository
         $stmt = $this->pdo->prepare($sql);
 
         $stmt->execute([
-            ':queue_name' => $job->queueName,
+            ':type' => $job->type,
             ':source' => $job->source,
             ':payload' => $job->payload,
             ':status' => $job->status,
@@ -98,62 +98,9 @@ class SqliteJobRepository
         $stmt = $this->pdo->prepare($sql);
         $stmt->execute([':id' => $id]);
 
-        $row = $stmt->fetch(PDO::FETCH_ASSOC);
+        $row = $stmt->fetch();
 
         return $row ? Job::fromDatabase($row) : null;
-    }
-
-    public function findByStatus(string $status): array
-    {
-        $sql = "SELECT * FROM jobs 
-                WHERE status = :status 
-                ORDER BY created_at ASC";
-
-        $stmt = $this->pdo->prepare($sql);
-        $stmt->bindValue(':status', $status);
-        $stmt->execute();
-
-        return array_map(
-            fn ($row) => Job::fromDatabase($row),
-            $stmt->fetchAll()
-        );
-    }
-
-    /**
-     * Свободный поиск по подстроке во всех значимых колонках.
-     * Ищет по имени очереди, источнику, payload, статусу, ошибке, результату и ID.
-     *
-     * @return Job[]
-     */
-    public function search(string $term, int $page = 1, int $limit = 50): array
-    {
-        $offset = ($page - 1) * $limit;
-
-        // Экранируем спецсимволы LIKE (% и _), чтобы искать подстроку буквально
-        $escaped = str_replace(['\\', '%', '_'], ['\\\\', '\\%', '\\_'], $term);
-        $like = '%' . $escaped . '%';
-
-        $sql = "SELECT * FROM jobs
-                WHERE queue_name LIKE :like ESCAPE '\\'
-                   OR source LIKE :like ESCAPE '\\'
-                   OR payload LIKE :like ESCAPE '\\'
-                   OR status LIKE :like ESCAPE '\\'
-                   OR error LIKE :like ESCAPE '\\'
-                   OR result LIKE :like ESCAPE '\\'
-                   OR CAST(id AS TEXT) LIKE :like ESCAPE '\\'
-                ORDER BY created_at DESC, id DESC
-                LIMIT :limit OFFSET :offset";
-
-        $stmt = $this->pdo->prepare($sql);
-        $stmt->bindValue(':like', $like);
-        $stmt->bindValue(':limit', $limit, PDO::PARAM_INT);
-        $stmt->bindValue(':offset', $offset, PDO::PARAM_INT);
-        $stmt->execute();
-
-        return array_map(
-            fn ($row) => Job::fromDatabase($row),
-            $stmt->fetchAll()
-        );
     }
 
     /**
@@ -161,7 +108,7 @@ class SqliteJobRepository
      *
      * @param array{
      *     status?: string,
-     *     queue_name?: string,
+     *     type?: string,
      *     source?: string,
      *     q?: string,
      *     created_from?: string,
@@ -206,7 +153,7 @@ class SqliteJobRepository
      *
      * @param array{
      *     status?: string,
-     *     queue_name?: string,
+     *     type?: string,
      *     source?: string,
      *     q?: string,
      *     created_from?: string,
@@ -234,13 +181,13 @@ class SqliteJobRepository
     /**
      * @return string[]
      */
-    public function findQueueNames(): array
+    public function findTypes(): array
     {
         $statement = $this->pdo->query(
-            "SELECT DISTINCT queue_name
+            "SELECT DISTINCT type
              FROM jobs
-             WHERE queue_name <> ''
-             ORDER BY queue_name ASC"
+             WHERE type <> ''
+             ORDER BY type ASC"
         );
 
         return array_map('strval', $statement->fetchAll(PDO::FETCH_COLUMN));
@@ -251,7 +198,7 @@ class SqliteJobRepository
      *
      * @param array{
      *     status?: string,
-     *     queue_name?: string,
+     *     type?: string,
      *     source?: string,
      *     q?: string,
      *     created_from?: string,
@@ -269,9 +216,9 @@ class SqliteJobRepository
             $params[':status'] = $filters['status'];
         }
 
-        if (!empty($filters['queue_name'])) {
-            $where[] = 'queue_name = :queue_name';
-            $params[':queue_name'] = $filters['queue_name'];
+        if (!empty($filters['type'])) {
+            $where[] = 'type = :type';
+            $params[':type'] = $filters['type'];
         }
 
         if (!empty($filters['source'])) {
@@ -282,7 +229,7 @@ class SqliteJobRepository
         if (isset($filters['q']) && $filters['q'] !== '') {
             $q = str_replace(['\\', '%', '_'], ['\\\\', '\\%', '\\_'], $filters['q']);
             $params[':q'] = '%' . $q . '%';
-            $where[] = "(queue_name LIKE :q ESCAPE '\\'
+            $where[] = "(type LIKE :q ESCAPE '\\'
                      OR source LIKE :q ESCAPE '\\'
                      OR payload LIKE :q ESCAPE '\\'
                      OR status LIKE :q ESCAPE '\\'
@@ -353,7 +300,7 @@ class SqliteJobRepository
         $updatedAt = date('Y-m-d H:i:s');
         $closedAt = in_array($status, [Job::STATUS_COMPLETED, Job::STATUS_FAILED], true)
             ? $updatedAt
-            : '';
+            : null;
 
         $sql = 'UPDATE jobs
                 SET status = :status, updated_at = :updated_at, closed_at = :closed_at';

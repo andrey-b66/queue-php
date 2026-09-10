@@ -232,7 +232,7 @@ td.select {
     font-size: 12px;
 }
 
-.queue-name {
+.job-type {
     min-width: 110px;
     color: #1d4ed8;
     white-space: nowrap;

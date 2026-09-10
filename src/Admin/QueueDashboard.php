@@ -12,6 +12,9 @@ use Integrat\Queue\Job;
  */
 final class QueueDashboard
 {
+    private QueueAdmin $admin;
+    private ?string $cssUrl;
+
     /**
      * @param string|null $cssUrl   URL стилей админки. По умолчанию (null) стили
      *                              встраиваются в страницу из файла пакета — это работает
@@ -19,10 +22,10 @@ final class QueueDashboard
      *                              Укажите URL, если хотите отдавать CSS отдельным файлом
      *                              (кешируется браузером).
      */
-    public function __construct(
-        private QueueAdmin $admin,
-        private ?string $cssUrl = null,
-    ) {
+    public function __construct(QueueAdmin $admin, ?string $cssUrl = null)
+    {
+        $this->admin = $admin;
+        $this->cssUrl = $cssUrl;
     }
 
     public function handle(): void
@@ -163,7 +166,7 @@ final class QueueDashboard
             $createdFrom,
             $createdTo,
             $perPage,
-            $page,
+            $page
         ): string {
             $params = [
                 'q' => $q,
@@ -608,7 +611,10 @@ final class QueueDashboard
         <?php
     }
 
-    private function escape(mixed $value): string
+    /**
+     * @param mixed $value
+     */
+    private function escape($value): string
     {
         return htmlspecialchars(
             (string) $value,
@@ -634,7 +640,10 @@ final class QueueDashboard
         return str_replace('</', '<\/', $css);
     }
 
-    private function highlight(mixed $value, string $query): string
+    /**
+     * @param mixed $value
+     */
+    private function highlight($value, string $query): string
     {
         $escapedValue = $this->escape($value);
 
@@ -653,7 +662,10 @@ final class QueueDashboard
         return $highlighted;
     }
 
-    private function normalizeDate(mixed $value): string
+    /**
+     * @param mixed $value
+     */
+    private function normalizeDate($value): string
     {
         $date = trim((string) $value);
 
@@ -694,7 +706,11 @@ final class QueueDashboard
         return $result;
     }
 
-    private function decodeNestedJson(mixed $value): mixed
+    /**
+     * @param mixed $value
+     * @return mixed
+     */
+    private function decodeNestedJson($value)
     {
         if (is_array($value)) {
             foreach ($value as $key => $item) {

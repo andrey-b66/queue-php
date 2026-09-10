@@ -6,9 +6,11 @@ use Integrat\Queue\Storage\SqliteJobRepository;
 
 class Queue
 {
-    public function __construct(
-        private SqliteJobRepository $repository,
-    ) {
+    private SqliteJobRepository $repository;
+
+    public function __construct(SqliteJobRepository $repository)
+    {
+        $this->repository = $repository;
     }
 
     /**
@@ -93,10 +95,8 @@ class Queue
         return $this->repository->updateStatus($job);
     }
 
-    public function delete(int|Job $job): bool
+    public function delete(int $jobId): bool
     {
-        $jobId = $job instanceof Job ? $job->id : $job;
-
-        return $jobId !== null && $jobId > 0 && $this->repository->deleteByIds([$jobId]) === 1;
+        return $jobId > 0 && $this->repository->deleteByIds([$jobId]) === 1;
     }
 }

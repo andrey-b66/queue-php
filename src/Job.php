@@ -27,7 +27,7 @@ class Job
         string $type,
         string $source,
         string $payload,
-        ?string $result = null,
+        ?string $result = null
     ): self {
         $job = new self();
 

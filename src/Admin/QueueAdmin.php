@@ -13,9 +13,11 @@ use InvalidArgumentException;
  */
 final class QueueAdmin
 {
-    public function __construct(
-        private readonly SqliteJobRepository $repository,
-    ) {
+    private SqliteJobRepository $repository;
+
+    public function __construct(SqliteJobRepository $repository)
+    {
+        $this->repository = $repository;
     }
 
     /**

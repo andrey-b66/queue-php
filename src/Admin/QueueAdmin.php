@@ -22,8 +22,8 @@ final class QueueAdmin
 
     /**
      * @param array{
+     *     id?: int,
      *     status?: string,
-     *     type?: string,
      *     source?: string,
      *     search?: string,
      *     created_from?: string,
@@ -54,9 +54,9 @@ final class QueueAdmin
     /**
      * @return string[]
      */
-    public function getTypes(): array
+    public function getSources(): array
     {
-        return $this->repository->findTypes();
+        return $this->repository->findSources();
     }
 
     /**

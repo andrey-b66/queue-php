@@ -4,6 +4,9 @@ namespace Integrat\Queue;
 
 class Job
 {
+    /** Формат хранения всех дат: и в полях объекта, и в колонках таблицы */
+    public const DATE_FORMAT = 'Y-m-d H:i:s';
+
     public const STATUS_NEW = 'new';
     public const STATUS_PROCESSING = 'processing';
     public const STATUS_COMPLETED = 'completed';
@@ -12,42 +15,52 @@ class Job
     /** null — задача ещё не сохранена */
     public ?int $id = null;
 
-    /** Тип задачи: стабильный ярлык, по которому подбирается обработчик */
-    public string $type;
+    /** Источник задачи: стабильный ярлык, по которому подбирается обработчик */
     public string $source;
     public string $payload;
     public string $status;
     public string $createdAt;
     public string $updatedAt;
     public ?string $closedAt = null;
-    public ?string $error = null;
+
+    /** Необязательные поля: заполняются только если вызывающий этого хочет */
+    public ?string $info = null;
     public ?string $result = null;
+    public ?string $error = null;
 
     public static function create(
-        string $type,
         string $source,
         string $payload,
-        ?string $result = null
+        ?string $info = null,
+        ?string $result = null,
+        ?string $error = null
     ): self {
         $job = new self();
 
-        $job->type = $type;
         $job->source = $source;
         $job->payload = $payload;
         $job->status = self::STATUS_NEW;
-        $job->createdAt = date('Y-m-d H:i:s');
-        $job->updatedAt = date('Y-m-d H:i:s');
+        $job->createdAt = date(self::DATE_FORMAT);
+        $job->updatedAt = date(self::DATE_FORMAT);
+        $job->info = $info;
         $job->result = $result;
+        $job->error = $error;
 
         return $job;
     }
 
+    /**
+     * Задача уходит в работу: следы прошлого прогона больше не актуальны,
+     * поэтому result и error обнуляются. Info не трогаем — это заметка
+     * вызывающего, а не след прогона.
+     */
     public function markProcessing(): self
     {
         $this->status = self::STATUS_PROCESSING;
-        $this->error = null;
-        $this->updatedAt = date('Y-m-d H:i:s');
+        $this->updatedAt = date(self::DATE_FORMAT);
         $this->closedAt = null;
+        $this->result = null;
+        $this->error = null;
         return $this;
     }
 
@@ -55,8 +68,8 @@ class Job
     {
         $this->status = self::STATUS_COMPLETED;
         $this->error = null;
-        $this->updatedAt = date('Y-m-d H:i:s');
-        $this->closedAt = date('Y-m-d H:i:s');
+        $this->updatedAt = date(self::DATE_FORMAT);
+        $this->closedAt = date(self::DATE_FORMAT);
 
         if ($result !== null) {
             $this->result = $result;
@@ -65,12 +78,12 @@ class Job
         return $this;
     }
 
-    public function markFailed(?string $error = null, ?string $result = null): self
+    public function markFailed(?string $result = null, ?string $error = null): self
     {
         $this->status = self::STATUS_FAILED;
+        $this->updatedAt = date(self::DATE_FORMAT);
+        $this->closedAt = date(self::DATE_FORMAT);
         $this->error = $error;
-        $this->updatedAt = date('Y-m-d H:i:s');
-        $this->closedAt = date('Y-m-d H:i:s');
 
         if ($result !== null) {
             $this->result = $result;
@@ -87,15 +100,15 @@ class Job
         $job = new self();
 
         $job->id = (int) $row['id'];
-        $job->type = (string) $row['type'];
         $job->source = (string) $row['source'];
         $job->payload = (string) $row['payload'];
         $job->status = (string) $row['status'];
         $job->createdAt = (string) $row['created_at'];
         $job->updatedAt = (string) $row['updated_at'];
         $job->closedAt = $row['closed_at'] ?? null;
-        $job->error = $row['error'] ?? null;
+        $job->info = $row['info'] ?? null;
         $job->result = $row['result'] ?? null;
+        $job->error = $row['error'] ?? null;
 
         return $job;
     }
@@ -104,15 +117,15 @@ class Job
     {
         return [
             'id' => $this->id,
-            'type' => $this->type,
             'source' => $this->source,
             'payload' => $this->payload,
             'status' => $this->status,
             'created_at' => $this->createdAt,
             'updated_at' => $this->updatedAt,
             'closed_at' => $this->closedAt,
-            'error' => $this->error,
+            'info' => $this->info,
             'result' => $this->result,
+            'error' => $this->error,
         ];
     }
 }

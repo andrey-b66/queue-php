@@ -38,7 +38,7 @@ final class QueueDashboard
             Job::STATUS_FAILED,
         ];
 
-        $availableTypes = $this->admin->getTypes();
+        $availableSources = $this->admin->getSources();
 
         $requestUri = (string) ($_SERVER['REQUEST_URI'] ?? '');
         $basePath = strtok($requestUri, '?');
@@ -58,6 +58,9 @@ final class QueueDashboard
             'delete' => 'Удалить',
         ];
 
+        // Сроки хранения, доступные в форме очистки, в днях
+        $allowedCleanupDays = [30, 60, 90, 180, 365];
+
         if ($requestMethod === 'POST') {
             $postLimit = (int) ($_POST['limit'] ?? 50);
 
@@ -68,7 +71,7 @@ final class QueueDashboard
             $back = [
                 'search' => trim((string) ($_POST['search'] ?? '')),
                 'status' => (string) ($_POST['status'] ?? ''),
-                'type' => trim((string) ($_POST['type'] ?? '')),
+                'source' => trim((string) ($_POST['source'] ?? '')),
                 'created_from' => $this->normalizeDate($_POST['created_from'] ?? ''),
                 'created_to' => $this->normalizeDate($_POST['created_to'] ?? ''),
                 'limit' => $postLimit === 50 ? '' : $postLimit,
@@ -96,6 +99,15 @@ final class QueueDashboard
                         $count = $this->admin->setStatusMany($ids, $newStatus);
                         $back['ok'] = "Статус «{$newStatus}» проставлен задачам: {$count}";
                     }
+                } elseif (isset($_POST['cleanup_days'])) {
+                    $days = (int) $_POST['cleanup_days'];
+
+                    if (!in_array($days, $allowedCleanupDays, true)) {
+                        throw new \InvalidArgumentException('Недопустимый срок хранения.');
+                    }
+
+                    $count = $this->admin->deleteOldRecords($days);
+                    $back['ok'] = "Удалено закрытых задач старше {$days} дн.: {$count}";
                 } else {
                     throw new \InvalidArgumentException('Неизвестное действие.');
                 }
@@ -121,7 +133,7 @@ final class QueueDashboard
 
         $page = max(1, (int) ($_GET['page'] ?? 1));
         $status = (string) ($_GET['status'] ?? '');
-        $type = trim((string) ($_GET['type'] ?? ''));
+        $source = trim((string) ($_GET['source'] ?? ''));
         $search = trim((string) ($_GET['search'] ?? ''));
         $createdFrom = $this->normalizeDate($_GET['created_from'] ?? '');
         $createdTo = $this->normalizeDate($_GET['created_to'] ?? '');
@@ -130,16 +142,19 @@ final class QueueDashboard
             $status = '';
         }
 
-        if (!in_array($type, $availableTypes, true)) {
-            $type = '';
+        if (!in_array($source, $availableSources, true)) {
+            $source = '';
         }
 
+        // В форме выбирают день, а в базе лежит время: разворачиваем в сутки целиком
         $filters = [
             'status' => $status,
-            'type' => $type,
+            'source' => $source,
             'search' => $search,
-            'created_from' => $createdFrom,
-            'created_to' => $createdTo,
+            'created_from' => $createdFrom === '' ? '' : $createdFrom . ' 00:00:00',
+            'created_to' => $createdTo === '' ? '' : $createdTo . ' 23:59:59',
+            // В админке удобнее видеть сначала свежие — обратный порядок разбора
+            'sort' => 'DESC',
         ];
 
         $rows = $this->admin->findFiltered($filters, $page, $perPage);
@@ -155,14 +170,14 @@ final class QueueDashboard
 
         $hasActiveFilters = $search !== ''
             || $status !== ''
-            || $type !== ''
+            || $source !== ''
             || $createdFrom !== ''
             || $createdTo !== '';
 
         $listUrl = function (array $overrides = []) use (
             $search,
             $status,
-            $type,
+            $source,
             $createdFrom,
             $createdTo,
             $perPage,
@@ -171,7 +186,7 @@ final class QueueDashboard
             $params = [
                 'search' => $search,
                 'status' => $status,
-                'type' => $type,
+                'source' => $source,
                 'created_from' => $createdFrom,
                 'created_to' => $createdTo,
                 'limit' => $perPage === 50 ? null : $perPage,
@@ -240,7 +255,7 @@ final class QueueDashboard
                     type="text"
                     name="search"
                     value="<?= $this->escape($search) ?>"
-                    placeholder="ID, тип, источник, payload, error или result"
+                    placeholder="ID, источник, payload, info, result или error"
                 >
             </div>
 
@@ -260,15 +275,15 @@ final class QueueDashboard
             </div>
 
             <div class="field">
-                <label for="type">Тип</label>
-                <select id="type" name="type">
-                    <option value="">Все типы</option>
-                    <?php foreach ($availableTypes as $availableType): ?>
+                <label for="source">Источник</label>
+                <select id="source" name="source">
+                    <option value="">Все источники</option>
+                    <?php foreach ($availableSources as $availableSource): ?>
                         <option
-                            value="<?= $this->escape($availableType) ?>"
-                            <?= $type === $availableType ? 'selected' : '' ?>
+                            value="<?= $this->escape($availableSource) ?>"
+                            <?= $source === $availableSource ? 'selected' : '' ?>
                         >
-                            <?= $this->escape($availableType) ?>
+                            <?= $this->escape($availableSource) ?>
                         </option>
                     <?php endforeach; ?>
                 </select>
@@ -343,7 +358,7 @@ final class QueueDashboard
         <input type="hidden" name="limit" value="<?= $this->escape($perPage) ?>">
         <input type="hidden" name="page" value="<?= $this->escape($page) ?>">
         <input type="hidden" name="status" value="<?= $this->escape($status) ?>">
-        <input type="hidden" name="type" value="<?= $this->escape($type) ?>">
+        <input type="hidden" name="source" value="<?= $this->escape($source) ?>">
         <input type="hidden" name="search" value="<?= $this->escape($search) ?>">
         <input type="hidden" name="created_from" value="<?= $this->escape($createdFrom) ?>">
         <input type="hidden" name="created_to" value="<?= $this->escape($createdTo) ?>">
@@ -396,11 +411,11 @@ final class QueueDashboard
                             >
                         </th>
                         <th>id</th>
-                        <th>type</th>
                         <th>source</th>
                         <th>status</th>
-                        <th>error</th>
+                        <th>info</th>
                         <th>result</th>
+                        <th>error</th>
                         <th>created_at</th>
                         <th>updated_at</th>
                         <th>closed_at</th>
@@ -418,8 +433,9 @@ final class QueueDashboard
                         <?php foreach ($rows as $row): ?>
                             <?php
                             $payloadText = $this->makeJsonReadable((string) $row['payload']);
-                            $errorText = (string) ($row['error'] ?? '');
+                            $infoText = (string) ($row['info'] ?? '');
                             $resultText = (string) ($row['result'] ?? '');
+                            $errorText = (string) ($row['error'] ?? '');
                             ?>
                             <tr>
                                 <td class="select">
@@ -436,10 +452,6 @@ final class QueueDashboard
                                     <?= $this->highlight($row['id'], $search) ?>
                                 </td>
 
-                                <td class="job-type">
-                                    <?= $this->highlight($row['type'], $search) ?>
-                                </td>
-
                                 <td class="source">
                                     <?= $this->highlight($row['source'], $search) ?>
                                 </td>
@@ -454,8 +466,8 @@ final class QueueDashboard
                                 </td>
 
                                 <td>
-                                    <?php if ($errorText !== ''): ?>
-                                        <pre class="error-text"><?= $this->highlight($errorText, $search) ?></pre>
+                                    <?php if ($infoText !== ''): ?>
+                                        <pre class="info-text"><?= $this->highlight($infoText, $search) ?></pre>
                                     <?php else: ?>
                                         —
                                     <?php endif; ?>
@@ -464,6 +476,14 @@ final class QueueDashboard
                                 <td>
                                     <?php if ($resultText !== ''): ?>
                                         <pre class="result-text"><?= $this->highlight($resultText, $search) ?></pre>
+                                    <?php else: ?>
+                                        —
+                                    <?php endif; ?>
+                                </td>
+
+                                <td>
+                                    <?php if ($errorText !== ''): ?>
+                                        <pre class="error-text"><?= $this->highlight($errorText, $search) ?></pre>
                                     <?php else: ?>
                                         —
                                     <?php endif; ?>
@@ -515,7 +535,7 @@ final class QueueDashboard
         <form class="page-size-form" method="get">
             <input type="hidden" name="search" value="<?= $this->escape($search) ?>">
             <input type="hidden" name="status" value="<?= $this->escape($status) ?>">
-            <input type="hidden" name="type" value="<?= $this->escape($type) ?>">
+            <input type="hidden" name="source" value="<?= $this->escape($source) ?>">
             <input type="hidden" name="created_from" value="<?= $this->escape($createdFrom) ?>">
             <input type="hidden" name="created_to" value="<?= $this->escape($createdTo) ?>">
 
@@ -536,6 +556,31 @@ final class QueueDashboard
             </noscript>
         </form>
     </div>
+
+    <!-- Обслуживание: отдельной формой, потому что вложенные формы HTML запрещает -->
+    <form class="cleanup-form" method="post" data-cleanup-form>
+        <input type="hidden" name="limit" value="<?= $this->escape($perPage) ?>">
+        <input type="hidden" name="search" value="<?= $this->escape($search) ?>">
+        <input type="hidden" name="status" value="<?= $this->escape($status) ?>">
+        <input type="hidden" name="source" value="<?= $this->escape($source) ?>">
+        <input type="hidden" name="created_from" value="<?= $this->escape($createdFrom) ?>">
+        <input type="hidden" name="created_to" value="<?= $this->escape($createdTo) ?>">
+
+        <label for="cleanup_days">Удалить закрытые задачи старше</label>
+        <select id="cleanup_days" name="cleanup_days">
+            <?php foreach ($allowedCleanupDays as $allowedDays): ?>
+                <option value="<?= $this->escape($allowedDays) ?>">
+                    <?= $this->escape($allowedDays) ?> дн.
+                </option>
+            <?php endforeach; ?>
+        </select>
+
+        <button type="submit" class="danger">Очистить</button>
+
+        <span class="cleanup-note">
+            Задачи в статусах new и processing не трогаются — зависшая задача переживёт очистку.
+        </span>
+    </form>
 </main>
 
 <script>
@@ -602,6 +647,18 @@ final class QueueDashboard
                 }
             });
         });
+
+        var cleanupForm = document.querySelector('[data-cleanup-form]');
+
+        if (cleanupForm) {
+            cleanupForm.addEventListener('submit', function (event) {
+                var days = cleanupForm.querySelector('[name="cleanup_days"]').value;
+
+                if (!confirm('Удалить закрытые задачи старше ' + days + ' дней? Отменить будет нельзя.')) {
+                    event.preventDefault();
+                }
+            });
+        }
 
         sync();
     })();

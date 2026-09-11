@@ -232,14 +232,6 @@ td.select {
     font-size: 12px;
 }
 
-.job-type {
-    min-width: 110px;
-    color: #1d4ed8;
-    white-space: nowrap;
-    font-family: monospace;
-    font-size: 12px;
-}
-
 /* Столбцы URL сжимаются последними: перенос только по необходимости, не посимвольно */
 .source {
     min-width: 240px;
@@ -250,8 +242,9 @@ td.select {
     font-size: 12px;
 }
 
-.error-text,
-.result-text {
+.info-text,
+.result-text,
+.error-text {
     min-width: 180px;
     max-width: 320px;
     margin: 0;
@@ -261,12 +254,16 @@ td.select {
     font-size: 12px;
 }
 
-.error-text {
-    color: #b91c1c;
+.info-text {
+    color: #1d4ed8;
 }
 
 .result-text {
     color: #15803d;
+}
+
+.error-text {
+    color: #b91c1c;
 }
 
 /* Столбец payload забирает всю свободную ширину таблицы — JSON видно целиком */
@@ -341,6 +338,27 @@ mark {
     width: auto;
 }
 
+.cleanup-form {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    margin-top: 16px;
+    padding: 12px 14px;
+    color: #6b7280;
+    background: #f9fafb;
+    border: 1px solid #e5e7eb;
+    border-radius: 4px;
+}
+
+.cleanup-form select {
+    width: auto;
+}
+
+.cleanup-note {
+    color: #9ca3af;
+    font-size: 12px;
+}
+
 @media (max-width: 1100px) {
     .filter-grid {
         grid-template-columns: repeat(2, minmax(180px, 1fr));
@@ -357,7 +375,8 @@ mark {
     }
 
     .actions-row,
-    .pager {
+    .pager,
+    .cleanup-form {
         align-items: stretch;
         flex-direction: column;
     }

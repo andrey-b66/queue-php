@@ -15,37 +15,23 @@ class Queue
 
     /**
      * Добавить задачу в очередь
-     *
-     * @throws \Exception
      */
     public function push(Job $job): Job
     {
-        try {
-            return $this->repository->create($job);
-        } catch (\Exception $e) {
-            // Задача в БД не легла — выкладываем её в лог PHP,
-            // чтобы payload можно было восстановить руками.
-            error_log(sprintf(
-                'Не удалось добавить задачу в очередь: type=%s source=%s payload=%s',
-                $job->type,
-                $job->source,
-                $job->payload
-            ));
-
-            throw new \Exception("Ошибка при добавлении задачи в очередь '{$job->type}': $e");
-        }
+        return $this->repository->create($job);
     }
 
     /**
      * Получить задачи по фильтрам.
      *
      * Фильтры комбинируются через AND, пустые значения игнорируются.
-     * Порядок по умолчанию — от старых к новым: очередь разбирается FIFO.
+     * Порядок по умолчанию — от старых к новым, в порядке поступления.
      * Передайте 'sort' => 'DESC', чтобы получить сначала свежие.
+     * Само умолчание живёт в SqliteJobRepository::findFiltered().
      *
      * @param array{
+     *     id?: int,
      *     status?: string,
-     *     type?: string,
      *     source?: string,
      *     search?: string,
      *     created_from?: string,
@@ -56,7 +42,7 @@ class Queue
      */
     public function find(array $filters = [], int $page = 1, int $limit = 50): array
     {
-        return $this->repository->findFiltered($filters + ['sort' => 'ASC'], $page, $limit);
+        return $this->repository->findFiltered($filters, $page, $limit);
     }
 
     public function findById(int $jobId): ?Job
@@ -65,34 +51,16 @@ class Queue
     }
 
     /**
-     * Отметить задачу как выполняющуюся
-     */
-    public function markProcessing(Job $job): ?Job
-    {
-        $job->markProcessing();
-        return $this->repository->updateStatus($job);
-    }
-
-    /**
-     * Отметить задачу как выполненную
+     * Записать изменения существующей задачи.
      *
-     * @param string|null $result Результат выполнения, заполняется по желанию
-     */
-    public function markCompleted(Job $job, ?string $result = null): ?Job
-    {
-        $job->markCompleted($result);
-        return $this->repository->updateStatus($job);
-    }
-
-    /**
-     * Отметить задачу как проваленную
+     * Пишутся все изменяемые поля. Переходы живут в модели —
+     * `$job->markCompleted('готово')` и т.п., здесь только запись в БД.
      *
-     * @param string|null $result Результат выполнения, заполняется по желанию
+     * @return Job|null null, если задачи с таким id уже нет
      */
-    public function markFailed(Job $job, ?string $error = null, ?string $result = null): ?Job
+    public function update(Job $job): ?Job
     {
-        $job->markFailed($error, $result);
-        return $this->repository->updateStatus($job);
+        return $this->repository->update($job);
     }
 
     public function delete(int $jobId): bool

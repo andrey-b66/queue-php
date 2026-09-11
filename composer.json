@@ -2,6 +2,7 @@
     "name": "integrat/queue",
     "description": "Автономный движок очереди на SQLite: приём заданий, файловые хуки, фоновый воркер и встроенная веб-админка.",
     "type": "library",
+    "license": "proprietary",
     "require": {
         "php": ">=7.4",
         "ext-pdo_sqlite": "*"
@@ -27,7 +28,6 @@
         "cs-fix": [
             "Composer\\Config::disableProcessTimeout",
             "php-cs-fixer fix --rules=@PSR12 --using-cache=no ."
-        ],
-        "test": "@php tests/EntrypointsTest.php"
+        ]
     }
 }

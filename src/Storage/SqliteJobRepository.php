@@ -28,7 +28,11 @@ class SqliteJobRepository
 
             $this->createJobsTable();
         } catch (PDOException $e) {
-            throw new \Exception("Failed to initialize queue database: $e");
+            throw new \Exception(
+                'Не удалось инициализировать базу очереди: ' . $e->getMessage(),
+                0,
+                $e
+            );
         }
     }
 
@@ -36,15 +40,15 @@ class SqliteJobRepository
     {
         $query = "CREATE TABLE IF NOT EXISTS jobs (
             id INTEGER PRIMARY KEY AUTOINCREMENT,
-            type TEXT,
             source TEXT,
             payload TEXT,
             status TEXT,
             created_at TEXT,
             updated_at TEXT,
             closed_at TEXT,
-            error TEXT,
-            result TEXT
+            info TEXT,
+            result TEXT,
+            error TEXT
         )";
         $this->pdo->exec($query);
     }
@@ -52,44 +56,46 @@ class SqliteJobRepository
     public function create(Job $job): Job
     {
         $sql = "INSERT INTO jobs (
-            type,
             source,
             payload,
             status,
             created_at,
             updated_at,
             closed_at,
-            error,
-            result
+            info,
+            result,
+            error
         ) VALUES (
-            :type,
             :source,
             :payload,
             :status,
             :created_at,
             :updated_at,
             :closed_at,
-            :error,
-            :result
+            :info,
+            :result,
+            :error
         )";
 
         $stmt = $this->pdo->prepare($sql);
 
         $stmt->execute([
-            ':type' => $job->type,
             ':source' => $job->source,
             ':payload' => $job->payload,
             ':status' => $job->status,
             ':created_at' => $job->createdAt,
             ':updated_at' => $job->updatedAt,
             ':closed_at' => $job->closedAt,
-            ':error' => $job->error,
+            ':info' => $job->info,
             ':result' => $job->result,
+            ':error' => $job->error,
         ]);
 
-        // После вставки получаем полный объект из БД
-        $newId = (int) $this->pdo->lastInsertId();
-        return $this->findById($newId);
+        // Записали все поля объекта, так что в базе лежит ровно он —
+        // перечитывать нечего, не хватало только id.
+        $job->id = (int) $this->pdo->lastInsertId();
+
+        return $job;
     }
 
     public function findById(int $id): ?Job
@@ -107,8 +113,8 @@ class SqliteJobRepository
      * Гибкая выборка с комбинируемыми фильтрами (все через AND).
      *
      * @param array{
+     *     id?: int,
      *     status?: string,
-     *     type?: string,
      *     source?: string,
      *     search?: string,
      *     created_from?: string,
@@ -125,10 +131,10 @@ class SqliteJobRepository
         $where = $conditions['where'];
         $params = $conditions['params'];
 
-        $sort = strtoupper((string) ($filters['sort'] ?? 'DESC'));
+        $sort = strtoupper((string) ($filters['sort'] ?? 'ASC'));
 
         if (!in_array($sort, ['ASC', 'DESC'], true)) {
-            $sort = 'DESC';
+            $sort = 'ASC';
         }
 
         $sql = 'SELECT * FROM jobs';
@@ -158,8 +164,8 @@ class SqliteJobRepository
      * Количество задач под те же фильтры, что и findFiltered (без пагинации).
      *
      * @param array{
+     *     id?: int,
      *     status?: string,
-     *     type?: string,
      *     source?: string,
      *     search?: string,
      *     created_from?: string,
@@ -189,24 +195,39 @@ class SqliteJobRepository
     /**
      * @return string[]
      */
-    public function findTypes(): array
+    public function findSources(): array
     {
         $statement = $this->pdo->query(
-            "SELECT DISTINCT type
+            "SELECT DISTINCT source
              FROM jobs
-             WHERE type <> ''
-             ORDER BY type ASC"
+             WHERE source <> ''
+             ORDER BY source ASC"
         );
 
         return array_map('strval', $statement->fetchAll(PDO::FETCH_COLUMN));
     }
 
+    /** Ключи, которые понимает buildFilterConditions() */
+    private const KNOWN_FILTERS = [
+        'id',
+        'status',
+        'source',
+        'search',
+        'created_from',
+        'created_to',
+        'sort',
+    ];
+
     /**
      * Собирает условия WHERE и параметры для фильтруемых выборок.
      *
+     * Незнакомый ключ означает опечатку в фильтре. Вернуть в этом случае всю
+     * таблицу опаснее всего: вызывающий думает, что отобрал нужное, а получил
+     * всё подряд. Поэтому такой фильтр не находит ничего.
+     *
      * @param array{
+     *     id?: int,
      *     status?: string,
-     *     type?: string,
      *     source?: string,
      *     search?: string,
      *     created_from?: string,
@@ -219,14 +240,21 @@ class SqliteJobRepository
         $where = [];
         $params = [];
 
+        if (array_diff(array_keys($filters), self::KNOWN_FILTERS) !== []) {
+            return [
+                'where' => ['1 = 0'],
+                'params' => [],
+            ];
+        }
+
+        if (!empty($filters['id'])) {
+            $where[] = 'id = :id';
+            $params[':id'] = (int) $filters['id'];
+        }
+
         if (!empty($filters['status'])) {
             $where[] = 'status = :status';
             $params[':status'] = $filters['status'];
-        }
-
-        if (!empty($filters['type'])) {
-            $where[] = 'type = :type';
-            $params[':type'] = $filters['type'];
         }
 
         if (!empty($filters['source'])) {
@@ -237,23 +265,23 @@ class SqliteJobRepository
         if (isset($filters['search']) && $filters['search'] !== '') {
             $search = str_replace(['\\', '%', '_'], ['\\\\', '\\%', '\\_'], $filters['search']);
             $params[':search'] = '%' . $search . '%';
-            $where[] = "(type LIKE :search ESCAPE '\\'
-                     OR source LIKE :search ESCAPE '\\'
+            $where[] = "(source LIKE :search ESCAPE '\\'
                      OR payload LIKE :search ESCAPE '\\'
                      OR status LIKE :search ESCAPE '\\'
-                     OR error LIKE :search ESCAPE '\\'
+                     OR info LIKE :search ESCAPE '\\'
                      OR result LIKE :search ESCAPE '\\'
+                     OR error LIKE :search ESCAPE '\\'
                      OR CAST(id AS TEXT) LIKE :search ESCAPE '\\')";
         }
 
         if (!empty($filters['created_from'])) {
             $where[] = 'created_at >= :created_from';
-            $params[':created_from'] = $filters['created_from'] . ' 00:00:00';
+            $params[':created_from'] = $filters['created_from'];
         }
 
         if (!empty($filters['created_to'])) {
             $where[] = 'created_at <= :created_to';
-            $params[':created_to'] = $filters['created_to'] . ' 23:59:59';
+            $params[':created_to'] = $filters['created_to'];
         }
 
         return [
@@ -262,40 +290,60 @@ class SqliteJobRepository
         ];
     }
 
-    public function updateStatus(Job $job): ?Job
+    /**
+     * Записать задачу целиком.
+     *
+     * Не переписываются `id` (ключ) и `created_at` — момент создания задачи
+     * неизменен. `updated_at` берётся из объекта: временем владеет модель,
+     * она проставляет его в mark-методах.
+     *
+     * @return Job|null null, если строки с таким id уже нет
+     */
+    public function update(Job $job): ?Job
     {
         $sql = "UPDATE jobs
-                SET status = :status,
+                SET source = :source,
+                    payload = :payload,
+                    status = :status,
                     updated_at = :updated_at,
                     closed_at = :closed_at,
-                    error = :error,
-                    result = :result
+                    info = :info,
+                    result = :result,
+                    error = :error
                 WHERE id = :id";
 
         $stmt = $this->pdo->prepare($sql);
         $stmt->execute([
             ':id' => $job->id,
+            ':source' => $job->source,
+            ':payload' => $job->payload,
             ':status' => $job->status,
             ':updated_at' => $job->updatedAt,
             ':closed_at' => $job->closedAt,
-            ':error' => $job->error,
+            ':info' => $job->info,
             ':result' => $job->result,
+            ':error' => $job->error,
         ]);
 
         if ($stmt->rowCount() === 0) {
             return null;
         }
 
-        return $this->findById($job->id);
+        return $job;
     }
 
     /**
      * Массовая смена статуса по списку ID.
      *
+     * Что именно означает переход, задано в mark-методах `Job`; здесь то же
+     * самое, но одним UPDATE на весь список, без загрузки объектов.
+     *
      * Ошибка сбрасывается, если новый статус не `failed` — она относилась
      * к прошлому прогону и для new/processing/completed уже неактуальна.
      * Результат сбрасывается при возврате в `new`/`processing`: задача будет
      * выполняться заново, поэтому прошлый результат к ней больше не относится.
+     * Info не трогаем ни при каком статусе: это заметка вызывающего, а не
+     * след прогона, и к смене статуса она отношения не имеет.
      *
      * @param int[] $ids
      * @return int Количество затронутых задач
@@ -396,11 +444,33 @@ class SqliteJobRepository
         ];
     }
 
+    /**
+     * Удалить закрытые задачи старше указанного срока.
+     *
+     * Граница считается в PHP, а не через SQLite `datetime('now')`: `created_at`
+     * пишется в локальной зоне, а `datetime('now')` возвращает UTC, и прямое
+     * сравнение даёт сдвиг на разницу часовых поясов.
+     *
+     * Незакрытые задачи не трогаем. Задача, зависшая в `processing`, — это повод
+     * разобраться, а не мусор, и она должна дожить до разбора.
+     *
+     * @return int Количество удалённых задач
+     */
     public function deleteOldRecords(int $daysToKeep = 30): int
     {
-        $sql = "DELETE FROM jobs 
-                WHERE created_at < datetime('now', '-{$daysToKeep} days')";
+        $cutoff = date(Job::DATE_FORMAT, strtotime('-' . max(0, $daysToKeep) . ' days'));
 
-        return $this->pdo->exec($sql);
+        $sql = 'DELETE FROM jobs
+                WHERE created_at < :cutoff
+                  AND status IN (:completed, :failed)';
+
+        $stmt = $this->pdo->prepare($sql);
+        $stmt->execute([
+            ':cutoff' => $cutoff,
+            ':completed' => Job::STATUS_COMPLETED,
+            ':failed' => Job::STATUS_FAILED,
+        ]);
+
+        return $stmt->rowCount();
     }
 }

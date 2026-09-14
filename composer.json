@@ -1,7 +1,6 @@
 {
     "name": "integrat/queue",
     "description": "Очередь задач на SQLite: приём заданий, хранение, разбор и встроенная веб-админка.",
-    "type": "library",
     "license": "proprietary",
     "require": {
         "php": "^7.4 || ^8.0",
@@ -28,14 +27,8 @@
         }
     },
     "scripts": {
-        "cs-check": [
-            "Composer\\Config::disableProcessTimeout",
-            "php-cs-fixer fix --dry-run --diff --rules=@PSR12 --using-cache=no ."
-        ],
-        "cs-fix": [
-            "Composer\\Config::disableProcessTimeout",
-            "php-cs-fixer fix --rules=@PSR12 --using-cache=no ."
-        ],
+        "cs-check": "php-cs-fixer fix --dry-run --diff --rules=@PSR12 --using-cache=no .",
+        "cs-fix": "php-cs-fixer fix --rules=@PSR12 --using-cache=no .",
         "test": "phpunit"
     }
 }

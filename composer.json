@@ -1,10 +1,11 @@
 {
     "name": "integrat/queue",
-    "description": "Автономный движок очереди на SQLite: приём заданий, файловые хуки, фоновый воркер и встроенная веб-админка.",
+    "description": "Очередь задач на SQLite: приём заданий, хранение, разбор и встроенная веб-админка.",
     "type": "library",
     "license": "proprietary",
     "require": {
-        "php": ">=7.4",
+        "php": "^7.4 || ^8.0",
+        "ext-json": "*",
         "ext-pdo_sqlite": "*"
     },
     "autoload": {
@@ -13,7 +14,13 @@
         }
     },
     "require-dev": {
-        "friendsofphp/php-cs-fixer": "^3.95"
+        "friendsofphp/php-cs-fixer": "^3.95",
+        "phpunit/phpunit": "^9.6"
+    },
+    "autoload-dev": {
+        "psr-4": {
+            "Integrat\\Queue\\Tests\\": "tests/"
+        }
     },
     "config": {
         "platform": {
@@ -28,6 +35,7 @@
         "cs-fix": [
             "Composer\\Config::disableProcessTimeout",
             "php-cs-fixer fix --rules=@PSR12 --using-cache=no ."
-        ]
+        ],
+        "test": "phpunit"
     }
 }

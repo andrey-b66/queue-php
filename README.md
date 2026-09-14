@@ -3,8 +3,8 @@
 Очередь задач на SQLite: приём заданий, хранение, разбор и встроенная веб-админка.
 Без внешних сервисов — нужен только PHP и файл базы.
 
-- PHP 7.4 и выше (работает и на 8.x)
-- Единственное расширение — `ext-pdo_sqlite`
+- PHP 7.4 или 8.x
+- Расширения — `ext-pdo_sqlite` и `ext-json`
 - Ноль зависимостей в рантайме
 
 ## Установка
@@ -125,8 +125,9 @@ $queue->find(['source' => 'crm'], 2, 100); // страница 2 по 100 шту
 | `created_to` | `string` | `created_at <= значения` |
 | `sort` | `ASC` / `DESC` | по умолчанию `ASC` — сначала самые старые |
 
-Даты — строки в том же формате, в каком лежат в базе (`Y-m-d H:i:s`).
-Сутки целиком задаются явно:
+Даты — строки в том же формате, в каком лежат в базе (`Y-m-d H:i:s`), **в UTC**.
+Библиотека пишет время в UTC независимо от `date.timezone`, поэтому веб и крон
+с разными настройками PHP видят одну и ту же шкалу. Сутки целиком задаются явно:
 
 ```php
 $queue->find([
@@ -180,18 +181,57 @@ $repository = new SqliteJobRepository(__DIR__ . '/../storage/jobs.sqlite');
 new QueueDashboard($admin, '/assets/queue-dashboard.css');
 ```
 
+Время админка по умолчанию показывает в UTC — так оно лежит в базе. Чтобы видеть
+местное время (и выбирать в фильтре даты по нему), передайте часовой пояс третьим
+аргументом:
+
+```php
+new QueueDashboard($admin, null, 'Europe/Moscow');
+```
+
+### Во фреймворке
+
+`handle()` сам отправляет ответ в браузер — это удобно в отдельном файле, но не во
+фреймворке, где контроллер должен вернуть объект ответа. Для этого есть `process()`:
+он принимает данные запроса и возвращает статус, заголовки и HTML, ничего
+не отправляя. Пример для Laravel:
+
+```php
+use Illuminate\Http\Request;
+use Integrat\Queue\Admin\QueueAdmin;
+use Integrat\Queue\Admin\QueueDashboard;
+use Integrat\Queue\Storage\SqliteJobRepository;
+
+// Проверка прав — на вашей стороне, см. ниже
+Route::match(['get', 'post'], '/queue-admin', function (Request $request) {
+    $repository = new SqliteJobRepository(storage_path('queue/jobs.sqlite'));
+    $dashboard = new QueueDashboard(new QueueAdmin($repository));
+
+    $response = $dashboard->process(
+        $request->query->all(),
+        $request->request->all(),
+        $request->server->all(),
+        $request->cookies->all()
+    );
+
+    return response($response['body'], $response['status'], $response['headers']);
+})->middleware('auth');
+```
+
+У админки своя защита от CSRF, а её формы не знают про токен фреймворка. Поэтому
+маршрут админки нужно добавить в исключения CSRF-проверки фреймворка — иначе
+он будет отклонять все действия в админке.
+
 ### Доступ
 
-**`handle()` не проверяет права.** Кто открыл страницу — тот и хозяйничает,
+**`handle()` и `process()` не проверяют права.** Кто открыл страницу — тот и хозяйничает,
 включая массовое удаление. Закрывайте точку входа сами: проверкой своей сессии
 перед вызовом, как в примере выше, либо basic-аутентификацией на веб-сервере.
 
-Защиты от CSRF в формах тоже нет — она имеет смысл только вместе с
-аутентификацией, поэтому оставлена на вашей стороне.
-
 ## Обслуживание
 
-Удалить закрытые задачи старше 30 дней:
+Удалить задачи, закрытые больше 30 дней назад (срок считается от `closed_at`,
+а не от создания):
 
 ```php
 $admin = new QueueAdmin($repository);
@@ -232,6 +272,7 @@ $admin->getSources();                              // список источн�
 ## Разработка
 
 ```bash
+composer test       # запустить тесты
 composer cs-check   # проверить стиль (PSR-12)
 composer cs-fix     # поправить
 ```

@@ -1,10 +1,16 @@
 <?php
 
+declare(strict_types=1);
+
 namespace Integrat\Queue;
 
 class Job
 {
-    /** Формат хранения всех дат: и в полях объекта, и в колонках таблицы */
+    /**
+     * Формат хранения всех дат: и в полях объекта, и в колонках таблицы.
+     * Время всегда в UTC, независимо от date.timezone процесса: веб и крон
+     * часто настроены по-разному, а пишут в одну базу.
+     */
     public const DATE_FORMAT = 'Y-m-d H:i:s';
 
     public const STATUS_NEW = 'new';
@@ -28,6 +34,10 @@ class Job
     public ?string $result = null;
     public ?string $error = null;
 
+    private function __construct()
+    {
+    }
+
     public static function create(
         string $source,
         string $payload,
@@ -36,12 +46,13 @@ class Job
         ?string $error = null
     ): self {
         $job = new self();
+        $now = gmdate(self::DATE_FORMAT);
 
         $job->source = $source;
         $job->payload = $payload;
         $job->status = self::STATUS_NEW;
-        $job->createdAt = date(self::DATE_FORMAT);
-        $job->updatedAt = date(self::DATE_FORMAT);
+        $job->createdAt = $now;
+        $job->updatedAt = $now;
         $job->info = $info;
         $job->result = $result;
         $job->error = $error;
@@ -57,7 +68,7 @@ class Job
     public function markProcessing(): self
     {
         $this->status = self::STATUS_PROCESSING;
-        $this->updatedAt = date(self::DATE_FORMAT);
+        $this->updatedAt = gmdate(self::DATE_FORMAT);
         $this->closedAt = null;
         $this->result = null;
         $this->error = null;
@@ -68,8 +79,8 @@ class Job
     {
         $this->status = self::STATUS_COMPLETED;
         $this->error = null;
-        $this->updatedAt = date(self::DATE_FORMAT);
-        $this->closedAt = date(self::DATE_FORMAT);
+        $this->updatedAt = gmdate(self::DATE_FORMAT);
+        $this->closedAt = $this->updatedAt;
 
         if ($result !== null) {
             $this->result = $result;
@@ -81,8 +92,8 @@ class Job
     public function markFailed(?string $result = null, ?string $error = null): self
     {
         $this->status = self::STATUS_FAILED;
-        $this->updatedAt = date(self::DATE_FORMAT);
-        $this->closedAt = date(self::DATE_FORMAT);
+        $this->updatedAt = gmdate(self::DATE_FORMAT);
+        $this->closedAt = $this->updatedAt;
         $this->error = $error;
 
         if ($result !== null) {

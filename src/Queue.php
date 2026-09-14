@@ -1,5 +1,7 @@
 <?php
 
+declare(strict_types=1);
+
 namespace Integrat\Queue;
 
 use Integrat\Queue\Storage\SqliteJobRepository;

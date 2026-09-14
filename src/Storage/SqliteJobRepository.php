@@ -1,5 +1,7 @@
 <?php
 
+declare(strict_types=1);
+
 namespace Integrat\Queue\Storage;
 
 use Integrat\Queue\Job;
@@ -8,6 +10,13 @@ use PDOException;
 
 class SqliteJobRepository
 {
+    /**
+     * Сколько id передавать в одном запросе `id IN (...)`. SQLite до 3.32
+     * принимает не больше 999 параметров на запрос, а такие версии стоят
+     * в сборках PHP 7.4 под Windows и в Ubuntu 20.04 и старше.
+     */
+    private const IDS_PER_QUERY = 500;
+
     private PDO $pdo;
 
     public function __construct(string $dbPath)
@@ -125,6 +134,9 @@ class SqliteJobRepository
      */
     public function findFiltered(array $filters = [], int $page = 1, int $limit = 50): array
     {
+        // Отрицательный LIMIT в SQLite снимает ограничение и отдаёт всю таблицу
+        $page = max(1, $page);
+        $limit = max(1, $limit);
         $offset = ($page - 1) * $limit;
 
         $conditions = $this->buildFilterConditions($filters);
@@ -141,7 +153,9 @@ class SqliteJobRepository
         if ($where !== []) {
             $sql .= ' WHERE ' . implode(' AND ', $where);
         }
-        $sql .= " ORDER BY created_at {$sort}, id {$sort} LIMIT :limit OFFSET :offset";
+        // id растёт в порядке вставки — это и есть порядок поступления. В отличие
+        // от created_at, он не зависит от часов и часового пояса записавшего процесса
+        $sql .= " ORDER BY id {$sort} LIMIT :limit OFFSET :offset";
 
         $stmt = $this->pdo->prepare($sql);
         foreach ($params as $key => $value) {
@@ -263,7 +277,7 @@ class SqliteJobRepository
         }
 
         if (isset($filters['search']) && $filters['search'] !== '') {
-            $search = str_replace(['\\', '%', '_'], ['\\\\', '\\%', '\\_'], $filters['search']);
+            $search = str_replace(['\\', '%', '_'], ['\\\\', '\\%', '\\_'], (string) $filters['search']);
             $params[':search'] = '%' . $search . '%';
             $where[] = "(source LIKE :search ESCAPE '\\'
                      OR payload LIKE :search ESCAPE '\\'
@@ -350,15 +364,7 @@ class SqliteJobRepository
      */
     public function updateStatusByIds(array $ids, string $status): int
     {
-        $prepared = $this->buildIdPlaceholders($ids);
-        $placeholders = $prepared['placeholders'];
-        $params = $prepared['params'];
-
-        if ($placeholders === []) {
-            return 0;
-        }
-
-        $updatedAt = date('Y-m-d H:i:s');
+        $updatedAt = gmdate(Job::DATE_FORMAT);
         $closedAt = in_array($status, [Job::STATUS_COMPLETED, Job::STATUS_FAILED], true)
             ? $updatedAt
             : null;
@@ -374,20 +380,11 @@ class SqliteJobRepository
             $sql .= ', result = NULL';
         }
 
-        $sql .= ' WHERE id IN (' . implode(', ', $placeholders) . ')';
-
-        $stmt = $this->pdo->prepare($sql);
-        $stmt->bindValue(':status', $status);
-        $stmt->bindValue(':updated_at', $updatedAt);
-        $stmt->bindValue(':closed_at', $closedAt);
-
-        foreach ($params as $key => $value) {
-            $stmt->bindValue($key, $value, PDO::PARAM_INT);
-        }
-
-        $stmt->execute();
-
-        return $stmt->rowCount();
+        return $this->executeForIds($sql, $ids, [
+            ':status' => $status,
+            ':updated_at' => $updatedAt,
+            ':closed_at' => $closedAt,
+        ]);
     }
 
     /**
@@ -398,25 +395,59 @@ class SqliteJobRepository
      */
     public function deleteByIds(array $ids): int
     {
-        $prepared = $this->buildIdPlaceholders($ids);
-        $placeholders = $prepared['placeholders'];
-        $params = $prepared['params'];
+        return $this->executeForIds('DELETE FROM jobs', $ids);
+    }
 
-        if ($placeholders === []) {
+    /**
+     * Выполняет `$sql WHERE id IN (...)` пачками по IDS_PER_QUERY id.
+     *
+     * Все пачки идут в одной транзакции: если упадёт любая, не применится ни одна.
+     *
+     * @param int[] $ids
+     * @param array<string, string|null> $params Общие параметры запроса, кроме id
+     * @return int Количество затронутых строк
+     */
+    private function executeForIds(string $sql, array $ids, array $params = []): int
+    {
+        // Без дублей: один id в двух пачках посчитался бы дважды
+        $ids = array_values(array_unique(array_map('intval', $ids)));
+
+        if ($ids === []) {
             return 0;
         }
 
-        $sql = 'DELETE FROM jobs WHERE id IN (' . implode(', ', $placeholders) . ')';
+        $affected = 0;
 
-        $stmt = $this->pdo->prepare($sql);
+        $this->pdo->beginTransaction();
 
-        foreach ($params as $key => $value) {
-            $stmt->bindValue($key, $value, PDO::PARAM_INT);
+        try {
+            foreach (array_chunk($ids, self::IDS_PER_QUERY) as $chunk) {
+                $prepared = $this->buildIdPlaceholders($chunk);
+
+                $stmt = $this->pdo->prepare(
+                    $sql . ' WHERE id IN (' . implode(', ', $prepared['placeholders']) . ')'
+                );
+
+                foreach ($params as $key => $value) {
+                    $stmt->bindValue($key, $value);
+                }
+
+                foreach ($prepared['params'] as $key => $value) {
+                    $stmt->bindValue($key, $value, PDO::PARAM_INT);
+                }
+
+                $stmt->execute();
+                $affected += $stmt->rowCount();
+            }
+
+            $this->pdo->commit();
+        } catch (\Throwable $e) {
+            $this->pdo->rollBack();
+
+            throw $e;
         }
 
-        $stmt->execute();
-
-        return $stmt->rowCount();
+        return $affected;
     }
 
     /**
@@ -445,11 +476,11 @@ class SqliteJobRepository
     }
 
     /**
-     * Удалить закрытые задачи старше указанного срока.
+     * Удалить задачи, закрытые больше указанного числа дней назад.
      *
-     * Граница считается в PHP, а не через SQLite `datetime('now')`: `created_at`
-     * пишется в локальной зоне, а `datetime('now')` возвращает UTC, и прямое
-     * сравнение даёт сдвиг на разницу часовых поясов.
+     * Срок считается от закрытия, а не от создания: задача, которая провисела
+     * в очереди месяц и закрылась вчера, должна прожить полный срок хранения.
+     * Если `closed_at` не заполнен (записи старых версий), берётся `updated_at`.
      *
      * Незакрытые задачи не трогаем. Задача, зависшая в `processing`, — это повод
      * разобраться, а не мусор, и она должна дожить до разбора.
@@ -458,10 +489,10 @@ class SqliteJobRepository
      */
     public function deleteOldRecords(int $daysToKeep = 30): int
     {
-        $cutoff = date(Job::DATE_FORMAT, strtotime('-' . max(0, $daysToKeep) . ' days'));
+        $cutoff = gmdate(Job::DATE_FORMAT, time() - max(0, $daysToKeep) * 86400);
 
         $sql = 'DELETE FROM jobs
-                WHERE created_at < :cutoff
+                WHERE COALESCE(closed_at, updated_at) < :cutoff
                   AND status IN (:completed, :failed)';
 
         $stmt = $this->pdo->prepare($sql);

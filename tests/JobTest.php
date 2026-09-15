@@ -36,6 +36,19 @@ final class JobTest extends TestCase
         $this->assertEqualsWithDelta(time(), strtotime($job->createdAt . ' UTC'), 5);
     }
 
+    public function testMarkNewReturnsJobToQueue(): void
+    {
+        $job = Job::create('crm', '{}', 'заметка')->markFailed('частично', 'таймаут');
+
+        $job->markNew();
+
+        $this->assertSame(Job::STATUS_NEW, $job->status);
+        $this->assertNull($job->closedAt);
+        $this->assertNull($job->result);
+        $this->assertNull($job->error);
+        $this->assertSame('заметка', $job->info);
+    }
+
     public function testMarkProcessingClearsPreviousRun(): void
     {
         $job = Job::create('crm', '{}', 'заметка')->markFailed('частично', 'таймаут');

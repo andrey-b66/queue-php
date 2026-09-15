@@ -61,6 +61,21 @@ class Job
     }
 
     /**
+     * Задача возвращается в очередь и будет выполняться заново: следы прошлого
+     * прогона к ней больше не относятся, поэтому result и error обнуляются.
+     * Info не трогаем — это заметка вызывающего, а не след прогона.
+     */
+    public function markNew(): self
+    {
+        $this->status = self::STATUS_NEW;
+        $this->updatedAt = gmdate(self::DATE_FORMAT);
+        $this->closedAt = null;
+        $this->result = null;
+        $this->error = null;
+        return $this;
+    }
+
+    /**
      * Задача уходит в работу: следы прошлого прогона больше не актуальны,
      * поэтому result и error обнуляются. Info не трогаем — это заметка
      * вызывающего, а не след прогона.

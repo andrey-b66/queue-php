@@ -319,6 +319,20 @@ class SqliteJobRepository
      */
     public function update(Job $job): ?Job
     {
+        return $this->updateMany([$job]) === 1 ? $job : null;
+    }
+
+    /**
+     * Записать несколько задач целиком — по тем же правилам, что и update().
+     *
+     * Задачи пишутся по одной, без транзакции: если запись оборвётся на середине,
+     * уже записанные задачи останутся записанными.
+     *
+     * @param Job[] $jobs
+     * @return int Количество записанных задач; задачи, которых уже нет, не считаются
+     */
+    public function updateMany(array $jobs): int
+    {
         $sql = "UPDATE jobs
                 SET source = :source,
                     payload = :payload,
@@ -331,152 +345,108 @@ class SqliteJobRepository
                 WHERE id = :id";
 
         $stmt = $this->pdo->prepare($sql);
-        $stmt->execute([
-            ':id' => $job->id,
-            ':source' => $job->source,
-            ':payload' => $job->payload,
-            ':status' => $job->status,
-            ':updated_at' => $job->updatedAt,
-            ':closed_at' => $job->closedAt,
-            ':info' => $job->info,
-            ':result' => $job->result,
-            ':error' => $job->error,
-        ]);
+        $updated = 0;
 
-        if ($stmt->rowCount() === 0) {
-            return null;
+        foreach ($jobs as $job) {
+            $stmt->execute([
+                ':id' => $job->id,
+                ':source' => $job->source,
+                ':payload' => $job->payload,
+                ':status' => $job->status,
+                ':updated_at' => $job->updatedAt,
+                ':closed_at' => $job->closedAt,
+                ':info' => $job->info,
+                ':result' => $job->result,
+                ':error' => $job->error,
+            ]);
+
+            $updated += $stmt->rowCount();
         }
 
-        return $job;
+        return $updated;
     }
 
     /**
-     * Массовая смена статуса по списку ID.
-     *
-     * Что именно означает переход, задано в mark-методах `Job`; здесь то же
-     * самое, но одним UPDATE на весь список, без загрузки объектов.
-     *
-     * Ошибка сбрасывается, если новый статус не `failed` — она относилась
-     * к прошлому прогону и для new/processing/completed уже неактуальна.
-     * Результат сбрасывается при возврате в `new`/`processing`: задача будет
-     * выполняться заново, поэтому прошлый результат к ней больше не относится.
-     * Info не трогаем ни при каком статусе: это заметка вызывающего, а не
-     * след прогона, и к смене статуса она отношения не имеет.
+     * Задачи по списку ID, по возрастанию id. Несуществующие id пропускаются.
      *
      * @param int[] $ids
-     * @return int Количество затронутых задач
+     * @return Job[]
      */
-    public function updateStatusByIds(array $ids, string $status): int
+    public function findByIds(array $ids): array
     {
-        $updatedAt = gmdate(Job::DATE_FORMAT);
-        $closedAt = in_array($status, [Job::STATUS_COMPLETED, Job::STATUS_FAILED], true)
-            ? $updatedAt
-            : null;
+        $jobs = [];
 
-        $sql = 'UPDATE jobs
-                SET status = :status, updated_at = :updated_at, closed_at = :closed_at';
+        foreach ($this->chunkIds($ids) as $chunk) {
+            $stmt = $this->prepareForIds('SELECT * FROM jobs', $chunk, ' ORDER BY id ASC');
+            $stmt->execute();
 
-        if ($status !== Job::STATUS_FAILED) {
-            $sql .= ', error = NULL';
+            foreach ($stmt->fetchAll() as $row) {
+                $jobs[] = Job::fromDatabase($row);
+            }
         }
 
-        if (in_array($status, [Job::STATUS_NEW, Job::STATUS_PROCESSING], true)) {
-            $sql .= ', result = NULL';
-        }
-
-        return $this->executeForIds($sql, $ids, [
-            ':status' => $status,
-            ':updated_at' => $updatedAt,
-            ':closed_at' => $closedAt,
-        ]);
+        return $jobs;
     }
 
     /**
      * Массовое удаление по списку ID.
+     *
+     * Пачки удаляются по очереди, без транзакции: если удаление оборвётся
+     * на середине, уже удалённые пачки не вернутся.
      *
      * @param int[] $ids
      * @return int Количество удалённых задач
      */
     public function deleteByIds(array $ids): int
     {
-        return $this->executeForIds('DELETE FROM jobs', $ids);
+        $deleted = 0;
+
+        foreach ($this->chunkIds($ids) as $chunk) {
+            $stmt = $this->prepareForIds('DELETE FROM jobs', $chunk);
+            $stmt->execute();
+            $deleted += $stmt->rowCount();
+        }
+
+        return $deleted;
     }
 
     /**
-     * Выполняет `$sql WHERE id IN (...)` пачками по IDS_PER_QUERY id.
-     *
-     * Все пачки идут в одной транзакции: если упадёт любая, не применится ни одна.
+     * Разбивает id на пачки по IDS_PER_QUERY — по возрастанию и без дублей.
      *
      * @param int[] $ids
-     * @param array<string, string|null> $params Общие параметры запроса, кроме id
-     * @return int Количество затронутых строк
+     * @return array<int, int[]>
      */
-    private function executeForIds(string $sql, array $ids, array $params = []): int
+    private function chunkIds(array $ids): array
     {
-        // Без дублей: один id в двух пачках посчитался бы дважды
+        // Без дублей: один id в двух пачках обработался бы дважды
         $ids = array_values(array_unique(array_map('intval', $ids)));
+        sort($ids);
 
-        if ($ids === []) {
-            return 0;
-        }
-
-        $affected = 0;
-
-        $this->pdo->beginTransaction();
-
-        try {
-            foreach (array_chunk($ids, self::IDS_PER_QUERY) as $chunk) {
-                $prepared = $this->buildIdPlaceholders($chunk);
-
-                $stmt = $this->pdo->prepare(
-                    $sql . ' WHERE id IN (' . implode(', ', $prepared['placeholders']) . ')'
-                );
-
-                foreach ($params as $key => $value) {
-                    $stmt->bindValue($key, $value);
-                }
-
-                foreach ($prepared['params'] as $key => $value) {
-                    $stmt->bindValue($key, $value, PDO::PARAM_INT);
-                }
-
-                $stmt->execute();
-                $affected += $stmt->rowCount();
-            }
-
-            $this->pdo->commit();
-        } catch (\Throwable $e) {
-            $this->pdo->rollBack();
-
-            throw $e;
-        }
-
-        return $affected;
+        return array_chunk($ids, self::IDS_PER_QUERY);
     }
 
     /**
-     * Готовит именованные плейсхолдеры для условия `id IN (...)`.
+     * Готовит запрос `$sql WHERE id IN (...)$suffix` с уже привязанными id.
      *
      * @param int[] $ids
-     * @return array{placeholders: array<int, string>, params: array<string, int>}
      */
-    private function buildIdPlaceholders(array $ids): array
+    private function prepareForIds(string $sql, array $ids, string $suffix = ''): \PDOStatement
     {
-        $placeholders = [];
         $params = [];
-        $index = 0;
 
-        foreach ($ids as $id) {
-            $placeholder = ':id' . $index;
-            $placeholders[] = $placeholder;
-            $params[$placeholder] = (int) $id;
-            $index++;
+        foreach (array_values($ids) as $index => $id) {
+            $params[':id' . $index] = $id;
         }
 
-        return [
-            'placeholders' => $placeholders,
-            'params' => $params,
-        ];
+        $stmt = $this->pdo->prepare(
+            $sql . ' WHERE id IN (' . implode(', ', array_keys($params)) . ')' . $suffix
+        );
+
+        foreach ($params as $placeholder => $id) {
+            $stmt->bindValue($placeholder, $id, PDO::PARAM_INT);
+        }
+
+        return $stmt;
     }
 
     /**

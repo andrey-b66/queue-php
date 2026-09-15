@@ -93,14 +93,11 @@ Job::create('crm', $payload, 'повторная отправка', null, null);
 ### Переходы
 
 ```php
+$job->markNew();                          // вернуть в очередь; result и error обнуляются
 $job->markProcessing();                   // в работу; result и error обнуляются
 $job->markCompleted('готово');            // выполнено
 $job->markFailed('частично', 'таймаут');  // провалено
 ```
-
-Аргументы у всех трёх необязательные и идут в том же порядке, что и поля:
-`result`, затем `error`. Каждый метод возвращает саму задачу, так что вызов
-можно сразу передать в `update()`.
 
 `info` не трогается ни одним переходом — это ваша заметка, а не след прогона.
 
@@ -136,12 +133,6 @@ $queue->find([
 ]);
 ```
 
-> Фильтр с неизвестным ключом не находит ничего. Опечатка вроде `['statuss' => 'new']`
-> вернёт пустой список, а не всю таблицу.
->
-> Переданный ключ ищется по значению как есть: `['status' => '']` найдёт задачи с пустым
-> статусом, то есть обычно ничего. Пустая дата выборку не ограничивает.
-
 ## Удаление
 
 ```php
@@ -156,8 +147,8 @@ $queue->delete(42);  // bool
 <?php
 // public/queue-admin.php
 
-use Integrat\Queue\Admin\QueueAdmin;
 use Integrat\Queue\Admin\QueueDashboard;
+use Integrat\Queue\Queue;
 use Integrat\Queue\Storage\SqliteJobRepository;
 
 require __DIR__ . '/../vendor/autoload.php';
@@ -170,7 +161,7 @@ if (!$app->currentUser()->isAdmin()) {
 
 $repository = new SqliteJobRepository(__DIR__ . '/../storage/jobs.sqlite');
 
-(new QueueDashboard(new QueueAdmin($repository)))->handle();
+(new QueueDashboard(new Queue($repository)))->handle();
 ```
 
 Умеет: фильтры по статусу, источнику, датам и подстроке; постраничный вывод;
@@ -181,7 +172,7 @@ $repository = new SqliteJobRepository(__DIR__ . '/../storage/jobs.sqlite');
 чтобы он кешировался браузером, передайте его URL вторым аргументом:
 
 ```php
-new QueueDashboard($admin, '/assets/queue-dashboard.css');
+new QueueDashboard($queue, '/assets/queue-dashboard.css');
 ```
 
 Время админка по умолчанию показывает в UTC — так оно лежит в базе. Чтобы видеть
@@ -189,7 +180,7 @@ new QueueDashboard($admin, '/assets/queue-dashboard.css');
 аргументом:
 
 ```php
-new QueueDashboard($admin, null, 'Europe/Moscow');
+new QueueDashboard($queue, null, 'Europe/Moscow');
 ```
 
 ### Во фреймворке
@@ -201,14 +192,14 @@ new QueueDashboard($admin, null, 'Europe/Moscow');
 
 ```php
 use Illuminate\Http\Request;
-use Integrat\Queue\Admin\QueueAdmin;
 use Integrat\Queue\Admin\QueueDashboard;
+use Integrat\Queue\Queue;
 use Integrat\Queue\Storage\SqliteJobRepository;
 
 // Проверка прав — на вашей стороне, см. ниже
 Route::match(['get', 'post'], '/queue-admin', function (Request $request) {
     $repository = new SqliteJobRepository(storage_path('queue/jobs.sqlite'));
-    $dashboard = new QueueDashboard(new QueueAdmin($repository));
+    $dashboard = new QueueDashboard(new Queue($repository));
 
     $response = $dashboard->process(
         $request->query->all(),
@@ -237,8 +228,7 @@ Route::match(['get', 'post'], '/queue-admin', function (Request $request) {
 а не от создания):
 
 ```php
-$admin = new QueueAdmin($repository);
-$deleted = $admin->deleteOldRecords(30);
+$deleted = $queue->deleteOldRecords(30);
 ```
 
 То же самое доступно кнопкой внизу админки.
@@ -253,14 +243,20 @@ $stuck = $queue->find(['status' => Job::STATUS_PROCESSING]);
 ## Массовые операции
 
 ```php
-$admin->setStatusMany([1, 2, 3], Job::STATUS_NEW); // вернуть в очередь
-$admin->deleteMany([4, 5]);
-$admin->countFiltered(['status' => 'failed']);
-$admin->getSources();                              // список источников
+$queue->setStatusMany([1, 2, 3], Job::STATUS_NEW); // вернуть в очередь
+$queue->deleteMany([4, 5]);
+$queue->count(['status' => 'failed']);             // те же фильтры, что у find()
+$queue->sources();                                 // список источников
 ```
 
-При возврате в `new` или `processing` прошлые `result` и `error` обнуляются —
-задача пойдёт на новый прогон, старые следы к ней не относятся.
+`setStatusMany()` переводит каждую задачу тем же `mark*`-методом без аргументов,
+что и при работе с одной задачей, — правила переходов те же, см. «Переходы».
+Неизвестный статус — `InvalidArgumentException`.
+
+Массовые операции идут без транзакций: задачи записываются по одной, удаляются
+пачками, и если операция оборвётся на середине, сделанное не откатится.
+Если в это же время воркер разбирает те же задачи, одна запись перекроет
+другую. Запускайте массовые действия, когда воркер эти задачи не трогает.
 
 ## Что библиотека не делает
 

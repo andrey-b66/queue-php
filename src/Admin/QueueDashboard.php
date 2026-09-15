@@ -5,16 +5,17 @@ declare(strict_types=1);
 namespace Integrat\Queue\Admin;
 
 use Integrat\Queue\Job;
+use Integrat\Queue\Queue;
 
 /**
  * Простой встроенный дашборд очереди.
  *
  * Здесь находятся только обработка фильтров, действия над задачами
- * и HTML-разметка страницы. Данные загружаются через QueueAdmin.
+ * и HTML-разметка страницы. Данные загружаются через Queue.
  */
 final class QueueDashboard
 {
-    private QueueAdmin $admin;
+    private Queue $queue;
     private ?string $cssUrl;
     private \DateTimeZone $timezone;
 
@@ -28,9 +29,9 @@ final class QueueDashboard
      *                              понимает даты фильтра, например 'Europe/Moscow'.
      *                              В базе время всегда в UTC.
      */
-    public function __construct(QueueAdmin $admin, ?string $cssUrl = null, string $timezone = 'UTC')
+    public function __construct(Queue $queue, ?string $cssUrl = null, string $timezone = 'UTC')
     {
-        $this->admin = $admin;
+        $this->queue = $queue;
         $this->cssUrl = $cssUrl;
         // Неизвестный пояс — ошибка настройки: пусть падает сразу, а не показывает неверное время
         $this->timezone = new \DateTimeZone($timezone);
@@ -86,7 +87,7 @@ final class QueueDashboard
             Job::STATUS_FAILED,
         ];
 
-        $availableSources = $this->admin->getSources();
+        $availableSources = $this->queue->sources();
 
         $requestUri = (string) ($server['REQUEST_URI'] ?? '');
         $basePath = strtok($requestUri, '?');
@@ -143,11 +144,11 @@ final class QueueDashboard
                     }
 
                     if ($bulkAction === 'delete') {
-                        $count = $this->admin->deleteMany($ids);
+                        $count = $this->queue->deleteMany($ids);
                         $back['ok'] = "Удалено задач: {$count}";
                     } else {
                         $newStatus = substr($bulkAction, strlen('status:'));
-                        $count = $this->admin->setStatusMany($ids, $newStatus);
+                        $count = $this->queue->setStatusMany($ids, $newStatus);
                         $back['ok'] = "Статус «{$newStatus}» проставлен задачам: {$count}";
                     }
                 } elseif (isset($post['cleanup_days'])) {
@@ -157,7 +158,7 @@ final class QueueDashboard
                         throw new \InvalidArgumentException('Недопустимый срок хранения.');
                     }
 
-                    $count = $this->admin->deleteOldRecords($days);
+                    $count = $this->queue->deleteOldRecords($days);
                     $back['ok'] = "Удалено задач, закрытых больше {$days} дн. назад: {$count}";
                 } else {
                     throw new \InvalidArgumentException('Неизвестное действие.');
@@ -186,7 +187,7 @@ final class QueueDashboard
             $perPage = $defaultLimit;
         }
 
-        $page = (int) ($query['page'] ?? 1);
+        $page = max(1, (int) ($query['page'] ?? 1));
         $status = (string) ($query['status'] ?? '');
         $source = trim((string) ($query['source'] ?? ''));
         $search = trim((string) ($query['search'] ?? ''));
@@ -218,8 +219,13 @@ final class QueueDashboard
             'sort' => strtoupper($sort),
         ]);
 
-        $rows = $this->admin->findFiltered($filters, $page, $perPage);
-        $totalRows = $this->admin->countFiltered($filters);
+        $rows = array_map(
+            static function (Job $job): array {
+                return $job->toArray();
+            },
+            $this->queue->find($filters, $page, $perPage)
+        );
+        $totalRows = $this->queue->count($filters);
         $totalPages = max(1, (int) ceil($totalRows / $perPage));
 
         $statusColors = [

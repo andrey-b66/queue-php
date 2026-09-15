@@ -186,7 +186,7 @@ final class QueueDashboard
             $perPage = $defaultLimit;
         }
 
-        $page = max(1, (int) ($query['page'] ?? 1));
+        $page = (int) ($query['page'] ?? 1);
         $status = (string) ($query['status'] ?? '');
         $source = trim((string) ($query['source'] ?? ''));
         $search = trim((string) ($query['search'] ?? ''));
@@ -207,15 +207,16 @@ final class QueueDashboard
         }
 
         // В форме выбирают день в поясе админки, а в базе лежит время в UTC:
-        // разворачиваем в сутки целиком и переводим границы в UTC
-        $filters = [
+        // разворачиваем в сутки целиком и переводим границы в UTC.
+        // Невыбранные фильтры не передаём: пустое значение ищется как есть
+        $filters = $this->withoutEmpty([
             'status' => $status,
             'source' => $source,
             'search' => $search,
             'created_from' => $createdFrom === '' ? '' : $this->toUtc($createdFrom . ' 00:00:00'),
             'created_to' => $createdTo === '' ? '' : $this->toUtc($createdTo . ' 23:59:59'),
             'sort' => strtoupper($sort),
-        ];
+        ]);
 
         $rows = $this->admin->findFiltered($filters, $page, $perPage);
         $totalRows = $this->admin->countFiltered($filters);

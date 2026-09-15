@@ -131,12 +131,14 @@ class SqliteJobRepository
      *     sort?: 'ASC'|'DESC'
      * } $filters
      * @return Job[]
+     * @throws \InvalidArgumentException если page или limit меньше 1
      */
     public function findFiltered(array $filters = [], int $page = 1, int $limit = 50): array
     {
-        // Отрицательный LIMIT в SQLite снимает ограничение и отдаёт всю таблицу
-        $page = max(1, $page);
-        $limit = max(1, $limit);
+        if ($limit < 1 || $page < 1) {
+            throw new \InvalidArgumentException("Некорректная пагинация: page={$page}, limit={$limit}");
+        }
+
         $offset = ($page - 1) * $limit;
 
         $conditions = $this->buildFilterConditions($filters);
@@ -239,6 +241,8 @@ class SqliteJobRepository
      * таблицу опаснее всего: вызывающий думает, что отобрал нужное, а получил
      * всё подряд. Поэтому такой фильтр не находит ничего.
      *
+     * Переданный ключ ищется по значению как есть. Пустая дата выборку не ограничивает.
+     *
      * @param array{
      *     id?: int,
      *     status?: string,
@@ -261,22 +265,22 @@ class SqliteJobRepository
             ];
         }
 
-        if (!empty($filters['id'])) {
+        if (isset($filters['id'])) {
             $where[] = 'id = :id';
             $params[':id'] = (int) $filters['id'];
         }
 
-        if (!empty($filters['status'])) {
+        if (isset($filters['status'])) {
             $where[] = 'status = :status';
             $params[':status'] = $filters['status'];
         }
 
-        if (!empty($filters['source'])) {
+        if (isset($filters['source'])) {
             $where[] = 'source = :source';
             $params[':source'] = $filters['source'];
         }
 
-        if (isset($filters['search']) && $filters['search'] !== '') {
+        if (isset($filters['search'])) {
             $search = str_replace(['\\', '%', '_'], ['\\\\', '\\%', '\\_'], (string) $filters['search']);
             $params[':search'] = '%' . $search . '%';
             $where[] = "(source LIKE :search ESCAPE '\\'

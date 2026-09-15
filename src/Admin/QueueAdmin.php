@@ -30,13 +30,19 @@ final class QueueAdmin
      *     created_to?: string,
      *     sort?: 'ASC'|'DESC'
      * } $filters
-     * @return array<int, array<string, mixed>>
+     * @return array<int, array<string, mixed>> Пустой, если page или limit меньше 1
      */
     public function findFiltered(array $filters = [], int $page = 1, int $limit = 50): array
     {
+        try {
+            $jobs = $this->repository->findFiltered($filters, $page, $limit);
+        } catch (InvalidArgumentException $e) {
+            return [];
+        }
+
         $rows = [];
 
-        foreach ($this->repository->findFiltered($filters, $page, $limit) as $job) {
+        foreach ($jobs as $job) {
             $rows[] = $job->toArray();
         }
 

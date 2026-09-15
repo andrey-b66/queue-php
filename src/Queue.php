@@ -26,7 +26,8 @@ class Queue
     /**
      * Получить задачи по фильтрам.
      *
-     * Фильтры комбинируются через AND, пустые значения игнорируются.
+     * Без фильтров возвращаются все задачи. Переданные фильтры комбинируются через AND
+     * и ищутся по значению как есть; пустая дата выборку не ограничивает.
      * Порядок по умолчанию — от старых к новым, в порядке поступления.
      * Передайте 'sort' => 'DESC', чтобы получить сначала свежие.
      * Само умолчание живёт в SqliteJobRepository::findFiltered().
@@ -41,6 +42,7 @@ class Queue
      *     sort?: 'ASC'|'DESC'
      * } $filters
      * @return Job[]
+     * @throws \InvalidArgumentException если page или limit меньше 1
      */
     public function find(array $filters = [], int $page = 1, int $limit = 50): array
     {

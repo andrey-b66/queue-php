@@ -34,11 +34,25 @@ main {
     border: 1px solid #d1d5db;
 }
 
-.filter-grid {
+/* Фильтры в два ряда по четыре поля: статус, источник и даты, под ними поиск текста,
+   в конце второго ряда — кнопки по ширине содержимого */
+.filters {
     display: grid;
-    grid-template-columns: minmax(240px, 2fr) repeat(4, minmax(150px, 1fr));
+    grid-template-columns: repeat(4, minmax(0, 1fr)) auto;
     gap: 12px;
     align-items: end;
+}
+
+.filters .text-search {
+    grid-row: 2;
+}
+
+/* Flex, а не колонки сетки: «Сбросить» есть не всегда, и под неё не должно оставаться места */
+.filter-buttons {
+    display: flex;
+    grid-row: 2;
+    grid-column: 5;
+    gap: 12px;
 }
 
 .field label {
@@ -87,30 +101,25 @@ button,
     cursor: pointer;
 }
 
-.filter-actions {
+/* Полоса над таблицей и под ней: сводка слева, листание и размер страницы справа */
+.list-bar {
     display: flex;
     flex-wrap: wrap;
     align-items: center;
-    gap: 8px;
-    margin-top: 14px;
+    gap: 8px 16px;
+    margin: 12px 0;
+    color: #6b7280;
 }
 
-.filter-pager {
+.list-bar select {
+    width: auto;
+}
+
+.pager {
     display: flex;
     align-items: center;
     gap: 8px;
     margin-left: auto;
-    color: #6b7280;
-}
-
-.filter-pager select {
-    width: auto;
-}
-
-.filter-pager .disabled {
-    color: #9ca3af;
-    background: #f3f4f6;
-    cursor: default;
 }
 
 .button-link.secondary {
@@ -118,22 +127,16 @@ button,
     background: #e5e7eb;
 }
 
+/* Ссылка на несуществующую страницу видна, но не нажимается.
+   Ниже .button-link.secondary, чтобы перекрыть его цвета */
+.pager .disabled {
+    color: #9ca3af;
+    background: #f3f4f6;
+    pointer-events: none;
+}
+
 .danger {
     background: #b91c1c;
-}
-
-.actions-row {
-    display: flex;
-    flex-wrap: wrap;
-    align-items: center;
-    justify-content: flex-end;
-    gap: 12px 16px;
-    margin-bottom: 12px;
-}
-
-.summary {
-    margin: 0;
-    color: #6b7280;
 }
 
 .bulk-bar {
@@ -150,10 +153,6 @@ button,
 
 .bulk-bar.is-visible {
     display: flex;
-}
-
-.bulk-title {
-    white-space: nowrap;
 }
 
 .selected-count {
@@ -207,6 +206,27 @@ th {
     font-size: 12px;
 }
 
+/* Заголовок сортируемого столбца — ссылка; стрелка показывает текущее направление */
+.sort-link {
+    color: inherit;
+    white-space: nowrap;
+    text-decoration: none;
+}
+
+.sort-link:hover {
+    text-decoration: underline;
+}
+
+/* Стрелка крупнее текста заголовка: направление видно сразу */
+.sort-arrow {
+    margin-left: 4px;
+    color: #111827;
+    font-size: 18px;
+    font-weight: bold;
+    line-height: 1;
+    vertical-align: -2px;
+}
+
 td.id {
     font-weight: bold;
 }
@@ -224,6 +244,22 @@ td.select {
     color: #ffffff;
     border-radius: 12px;
     font-size: 12px;
+}
+
+.badge.status-new {
+    background: #a16207;
+}
+
+.badge.status-processing {
+    background: #1d4ed8;
+}
+
+.badge.status-completed {
+    background: #15803d;
+}
+
+.badge.status-failed {
+    background: #b91c1c;
 }
 
 .date {
@@ -289,53 +325,10 @@ details.payload pre {
     font-size: 12px;
 }
 
-.jobs-form,
-.page-size-form {
-    margin: 0;
-}
-
-mark {
-    color: #111827;
-    background: #fde047;
-}
-
 .empty {
     padding: 40px;
     color: #6b7280;
     text-align: center;
-}
-
-.pager {
-    display: flex;
-    align-items: center;
-    gap: 8px;
-    margin-top: 16px;
-}
-
-.pager a,
-.pager span {
-    padding: 7px 12px;
-    color: #111827;
-    background: #e5e7eb;
-    border-radius: 4px;
-    text-decoration: none;
-}
-
-.pager .disabled {
-    color: #9ca3af;
-    background: #f3f4f6;
-}
-
-.page-size-form {
-    display: flex;
-    align-items: center;
-    gap: 8px;
-    margin-left: 12px;
-    color: #6b7280;
-}
-
-.page-size-form select {
-    width: auto;
 }
 
 .cleanup-form {
@@ -359,9 +352,16 @@ mark {
     font-size: 12px;
 }
 
-@media (max-width: 1100px) {
-    .filter-grid {
-        grid-template-columns: repeat(2, minmax(180px, 1fr));
+/* Уже четыре поля в ряд не помещаются: по два в ряд, кнопки — последним рядом */
+@media (max-width: 1200px) {
+    .filters {
+        grid-template-columns: repeat(2, minmax(0, 1fr));
+    }
+
+    .filters .text-search,
+    .filter-buttons {
+        grid-row: auto;
+        grid-column: auto;
     }
 }
 
@@ -370,12 +370,10 @@ mark {
         padding: 12px;
     }
 
-    .filter-grid {
+    .filters {
         grid-template-columns: 1fr;
     }
 
-    .actions-row,
-    .pager,
     .cleanup-form {
         align-items: stretch;
         flex-direction: column;
@@ -385,11 +383,8 @@ mark {
         margin-left: 0;
     }
 
-    .page-size-form {
-        margin-left: 0;
-    }
-
-    .filter-pager {
+    .pager {
+        flex-wrap: wrap;
         margin-left: 0;
     }
 }

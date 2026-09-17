@@ -1,0 +1,379 @@
+<?php
+/**
+ * Разметка админки очереди.
+ *
+ * Подключается из Dashboard::renderPage() и видит $this и переменные этого метода.
+ * Комментарии — PHP, а не HTML: в страницу они не попадают.
+ *
+ * @var \Integrat\Queue\Dashboard $this
+ * @var string $ok
+ * @var string $error
+ * @var string $csrfToken
+ * @var string $status
+ * @var string $source
+ * @var string[] $availableSources
+ * @var string $createdFrom
+ * @var string $createdTo
+ * @var array<string, string> $searches
+ * @var int $page
+ * @var int $perPage
+ * @var int $totalPages
+ * @var int $totalRows
+ * @var bool $canReset
+ * @var \Integrat\Queue\Job[] $jobs
+ * @var array<string, mixed> $state
+ * @var callable(array<string, mixed>=): string $listUrl
+ * @var callable(string): string $sortLink
+ */
+?>
+<!doctype html>
+<html lang="ru">
+<head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <title>Очередь задач</title>
+    <?php // Стили встраиваются в страницу: так они работают, даже если vendor/ недоступен из веба ?>
+    <style><?php readfile(__DIR__ . '/Dashboard.css') ?></style>
+</head>
+<body>
+<header>
+    <h1>Очередь задач</h1>
+</header>
+
+<main>
+    <?php if ($ok !== ''): ?>
+        <div class="flash ok">
+            <?= $this->escape($ok) ?>
+        </div>
+    <?php endif; ?>
+
+    <?php if ($error !== ''): ?>
+        <div class="flash error">
+            Ошибка: <?= $this->escape($error) ?>
+        </div>
+    <?php endif; ?>
+
+    <div class="panel">
+        <?php
+        // Все фильтры — одна форма: «Показать» отбирает задачи, которые подходят
+        // под всё заполненное. Незаполненное поле условием не считается
+        ?>
+        <form class="filters" method="get">
+            <?php // Сортировка и размер страницы сохраняются, page — нет: новый отбор начинается с первой ?>
+            <?= $this->hiddenFields(['limit' => $state['limit'], 'sort_by' => $state['sort_by'], 'sort' => $state['sort']]) ?>
+
+            <div class="field">
+                <label for="status">Статус</label>
+                <select id="status" name="status">
+                    <option value="">Все статусы</option>
+                    <?php foreach (\Integrat\Queue\Job::STATUSES as $jobStatus): ?>
+                        <option
+                            value="<?= $jobStatus ?>"
+                            <?= $status === $jobStatus ? 'selected' : '' ?>
+                        >
+                            <?= $jobStatus ?>
+                        </option>
+                    <?php endforeach; ?>
+                </select>
+            </div>
+
+            <div class="field">
+                <label for="source">Источник</label>
+                <select id="source" name="source">
+                    <option value="">Все источники</option>
+                    <?php foreach ($availableSources as $availableSource): ?>
+                        <option
+                            value="<?= $this->escape($availableSource) ?>"
+                            <?= $source === $availableSource ? 'selected' : '' ?>
+                        >
+                            <?= $this->escape($availableSource) ?>
+                        </option>
+                    <?php endforeach; ?>
+                </select>
+            </div>
+
+            <div class="field">
+                <label for="created_from">Создана с (<?= $this->escape($this->timezone->getName()) ?>)</label>
+                <input
+                    id="created_from"
+                    type="date"
+                    name="created_from"
+                    value="<?= $this->escape($createdFrom) ?>"
+                    max="<?= $this->escape($createdTo) ?>"
+                >
+            </div>
+
+            <div class="field">
+                <label for="created_to">Создана по (<?= $this->escape($this->timezone->getName()) ?>)</label>
+                <input
+                    id="created_to"
+                    type="date"
+                    name="created_to"
+                    value="<?= $this->escape($createdTo) ?>"
+                    min="<?= $this->escape($createdFrom) ?>"
+                >
+            </div>
+
+            <?php // Текст в полях задачи — вторым рядом: заполненные поля объединяются через «И» ?>
+            <?php foreach (array_keys(self::TEXT_FIELDS) as $field): ?>
+                <div class="field text-search">
+                    <label for="search_<?= $field ?>">Текст в <?= $field ?></label>
+                    <input
+                        id="search_<?= $field ?>"
+                        type="search"
+                        name="search_<?= $field ?>"
+                        value="<?= $this->escape($searches["search_{$field}"]) ?>"
+                    >
+                </div>
+            <?php endforeach; ?>
+
+            <div class="filter-buttons">
+                <button type="submit">Показать</button>
+
+                <?php if ($canReset): ?>
+                    <a class="button-link secondary" href="?">
+                        Сбросить
+                    </a>
+                <?php endif; ?>
+            </div>
+        </form>
+    </div>
+
+    <?php
+    // Сводка, листание и размер страницы — одной полосой над таблицей и под ней.
+    // Собирается один раз и выводится дважды. Сортировка — по заголовкам таблицы.
+    // Без page: при смене размера страницы возвращаемся на первую
+    ob_start();
+    ?>
+    <form class="list-bar" method="get">
+        <?= $this->hiddenFields(array_diff_key($state, ['limit' => true, 'page' => true])) ?>
+
+        <span class="summary">
+            Страница <?= $page ?> из <?= $totalPages ?>.
+            Показано задач: <?= count($jobs) ?> из <?= $totalRows ?>.
+        </span>
+
+        <div class="pager">
+            <a
+                class="button-link secondary<?= $page > 1 ? '' : ' disabled' ?>"
+                href="<?= $this->escape($listUrl(['page' => $page - 1])) ?>"
+            >← Назад</a>
+
+            <a
+                class="button-link secondary<?= $page < $totalPages ? '' : ' disabled' ?>"
+                href="<?= $this->escape($listUrl(['page' => $page + 1])) ?>"
+            >Вперёд →</a>
+
+            <?php // Без id: полоса выводится дважды, а id на странице должен быть один ?>
+            <label>
+                На странице:
+                <select name="limit" onchange="this.form.submit()">
+                    <?php foreach (self::LIMITS as $allowedLimit): ?>
+                        <option
+                            value="<?= $allowedLimit ?>"
+                            <?= $perPage === $allowedLimit ? 'selected' : '' ?>
+                        >
+                            <?= $allowedLimit ?>
+                        </option>
+                    <?php endforeach; ?>
+                </select>
+            </label>
+        </div>
+    </form>
+    <?php $listBar = (string) ob_get_clean(); ?>
+
+    <?= $listBar ?>
+
+    <?php
+    // Одна форма на всю таблицу: отметки строк и массовые действия над ними.
+    // Отправляется на адрес текущего списка — после действия вернёмся на него же
+    ?>
+    <form class="jobs-form" method="post" action="<?= $this->escape($listUrl()) ?>">
+        <input type="hidden" name="csrf_token" value="<?= $this->escape($csrfToken) ?>">
+
+        <?php // Панель массовых действий: скрыта, пока не отмечена ни одна задача ?>
+        <div class="bulk-bar">
+            С отмеченными:
+
+            <?php foreach (self::MARK_STATUSES as $jobStatus): ?>
+                <button
+                    type="submit"
+                    name="bulk_action"
+                    value="<?= $jobStatus ?>"
+                    onclick="return confirm('Сменить статус отмеченных задач на <?= $jobStatus ?>?')"
+                >
+                    Отметить <?= $jobStatus ?>
+                </button>
+            <?php endforeach; ?>
+
+            <button
+                type="submit"
+                name="bulk_action"
+                value="delete"
+                class="danger"
+                onclick="return confirm('Удалить отмеченные задачи? Отменить будет нельзя.')"
+            >
+                Удалить
+            </button>
+
+            <span class="selected-count">Отмечено: 0</span>
+        </div>
+
+        <div class="table-wrap">
+            <table>
+                <thead>
+                    <tr>
+                        <th class="select">
+                            <input
+                                type="checkbox"
+                                title="Отметить все на странице"
+                                <?= $jobs === [] ? 'disabled' : '' ?>
+                            >
+                        </th>
+                        <?php // Сортируемые столбцы — рядом, сразу после id ?>
+                        <th><?= $sortLink('id') ?></th>
+                        <th><?= $sortLink('created_at') ?></th>
+                        <th><?= $sortLink('updated_at') ?></th>
+                        <th><?= $sortLink('closed_at') ?></th>
+                        <th>source</th>
+                        <th>status</th>
+                        <th>info</th>
+                        <th>result</th>
+                        <th>error</th>
+                        <th>payload</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    <?php if ($jobs === []): ?>
+                        <tr>
+                            <td colspan="11" class="empty">Задач нет</td>
+                        </tr>
+                    <?php else: ?>
+                        <?php foreach ($jobs as $job): ?>
+                            <tr>
+                                <td class="select">
+                                    <input
+                                        type="checkbox"
+                                        name="ids[]"
+                                        value="<?= $job->id ?>"
+                                        aria-label="Отметить задачу #<?= $job->id ?>"
+                                    >
+                                </td>
+
+                                <td class="id">
+                                    <?= $job->id ?>
+                                </td>
+
+                                <td class="date">
+                                    <?= $this->escape($this->toDisplayTime($job->createdAt)) ?>
+                                </td>
+
+                                <td class="date">
+                                    <?= $this->escape($this->toDisplayTime($job->updatedAt)) ?>
+                                </td>
+
+                                <td class="date">
+                                    <?= $this->escape($this->toDisplayTime($job->closedAt)) ?>
+                                </td>
+
+                                <td class="source">
+                                    <?= $this->escape($job->source) ?>
+                                </td>
+
+                                <td>
+                                    <span class="badge status-<?= $this->escape($job->status) ?>">
+                                        <?= $this->escape($job->status) ?>
+                                    </span>
+                                </td>
+
+                                <?php foreach (['info' => $job->info, 'result' => $job->result, 'error' => $job->error] as $field => $text): ?>
+                                    <td>
+                                        <?php if ((string) $text !== ''): ?>
+                                            <pre class="<?= $field ?>-text"><?= $this->escape($text) ?></pre>
+                                        <?php else: ?>
+                                            —
+                                        <?php endif; ?>
+                                    </td>
+                                <?php endforeach; ?>
+
+                                <td class="payload-cell">
+                                    <details class="payload">
+                                        <summary>Показать данные</summary>
+                                        <pre><?= $this->escape($this->formatPayload($job->payload)) ?></pre>
+                                    </details>
+                                </td>
+                            </tr>
+                        <?php endforeach; ?>
+                    <?php endif; ?>
+                </tbody>
+            </table>
+        </div>
+    </form>
+
+    <?php // Под пустым списком листать нечего ?>
+    <?php if ($jobs !== []): ?>
+        <?= $listBar ?>
+    <?php endif; ?>
+
+    <?php
+    // Обслуживание: отдельной формой, потому что вложенные формы HTML запрещает.
+    // Без page: после очистки список может стать короче
+    ?>
+    <form
+        class="cleanup-form"
+        method="post"
+        action="<?= $this->escape($listUrl(['page' => ''])) ?>"
+        onsubmit="return confirm('Удалить задачи, закрытые больше ' + this.cleanup_days.value + ' дн. назад? Отменить будет нельзя.')"
+    >
+        <input type="hidden" name="csrf_token" value="<?= $this->escape($csrfToken) ?>">
+
+        <label for="cleanup_days">Удалить задачи, закрытые больше</label>
+        <select id="cleanup_days" name="cleanup_days">
+            <?php foreach (self::CLEANUP_DAYS as $allowedDays): ?>
+                <option value="<?= $allowedDays ?>">
+                    <?= $allowedDays ?> дн.
+                </option>
+            <?php endforeach; ?>
+        </select>
+
+        <button type="submit" class="danger">Очистить</button>
+
+        <span class="cleanup-note">
+            Задачи в статусах new и processing не трогаются — зависшая задача переживёт очистку.
+        </span>
+    </form>
+</main>
+
+<script>
+    // Отметки строк: «отметить все», счётчик и показ панели массовых действий
+    (function () {
+        var form = document.querySelector('.jobs-form');
+        var selectAll = form.querySelector('th.select input');
+        var rowSelects = form.querySelectorAll('[name="ids[]"]');
+
+        function sync() {
+            var count = form.querySelectorAll('[name="ids[]"]:checked').length;
+
+            form.querySelector('.selected-count').textContent = 'Отмечено: ' + count;
+            form.querySelector('.bulk-bar').classList.toggle('is-visible', count > 0);
+            selectAll.checked = count > 0 && count === rowSelects.length;
+            selectAll.indeterminate = count > 0 && count < rowSelects.length;
+        }
+
+        selectAll.addEventListener('change', function () {
+            rowSelects.forEach(function (box) {
+                box.checked = selectAll.checked;
+            });
+
+            sync();
+        });
+
+        rowSelects.forEach(function (box) {
+            box.addEventListener('change', sync);
+        });
+
+        sync();
+    })();
+</script>
+</body>
+</html>

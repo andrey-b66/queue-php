@@ -18,6 +18,14 @@ class Job
     public const STATUS_COMPLETED = 'completed';
     public const STATUS_FAILED = 'failed';
 
+    /** Все статусы — в порядке жизни задачи */
+    public const STATUSES = [
+        self::STATUS_NEW,
+        self::STATUS_PROCESSING,
+        self::STATUS_COMPLETED,
+        self::STATUS_FAILED,
+    ];
+
     /** null — задача ещё не сохранена */
     public ?int $id = null;
 
@@ -38,13 +46,12 @@ class Job
     {
     }
 
-    public static function create(
-        string $source,
-        string $payload,
-        ?string $info = null,
-        ?string $result = null,
-        ?string $error = null
-    ): self {
+    /**
+     * Новая задача. result и error у неё появятся только после прогона — их ставят
+     * markCompleted() и markFailed().
+     */
+    public static function create(string $source, string $payload, ?string $info = null): self
+    {
         $job = new self();
         $now = gmdate(self::DATE_FORMAT);
 
@@ -54,68 +61,41 @@ class Job
         $job->createdAt = $now;
         $job->updatedAt = $now;
         $job->info = $info;
-        $job->result = $result;
-        $job->error = $error;
 
         return $job;
     }
 
     /**
-     * Задача возвращается в очередь и будет выполняться заново: следы прошлого
-     * прогона к ней больше не относятся, поэтому result и error обнуляются.
-     * Info не трогаем — это заметка вызывающего, а не след прогона.
+     * Вернуть задачу в очередь: result и error прошлого прогона обнуляются, info остаётся.
      */
     public function markNew(): self
     {
-        $this->status = self::STATUS_NEW;
-        $this->updatedAt = gmdate(self::DATE_FORMAT);
-        $this->closedAt = null;
-        $this->result = null;
-        $this->error = null;
-        return $this;
+        return $this->reopen(self::STATUS_NEW);
     }
 
     /**
-     * Задача уходит в работу: следы прошлого прогона больше не актуальны,
-     * поэтому result и error обнуляются. Info не трогаем — это заметка
-     * вызывающего, а не след прогона.
+     * Взять задачу в работу: result и error прошлого прогона обнуляются, info остаётся.
      */
     public function markProcessing(): self
     {
-        $this->status = self::STATUS_PROCESSING;
-        $this->updatedAt = gmdate(self::DATE_FORMAT);
-        $this->closedAt = null;
-        $this->result = null;
-        $this->error = null;
-        return $this;
+        return $this->reopen(self::STATUS_PROCESSING);
     }
 
+    /**
+     * Закрыть задачу как выполненную: error стирается, result без аргумента остаётся прежним.
+     */
     public function markCompleted(?string $result = null): self
     {
-        $this->status = self::STATUS_COMPLETED;
-        $this->error = null;
-        $this->updatedAt = gmdate(self::DATE_FORMAT);
-        $this->closedAt = $this->updatedAt;
-
-        if ($result !== null) {
-            $this->result = $result;
-        }
-
-        return $this;
+        return $this->close(self::STATUS_COMPLETED, $result, null);
     }
 
+    /**
+     * Закрыть задачу как упавшую: error заменяется переданным (без аргумента — стирается),
+     * result без аргумента остаётся прежним.
+     */
     public function markFailed(?string $result = null, ?string $error = null): self
     {
-        $this->status = self::STATUS_FAILED;
-        $this->updatedAt = gmdate(self::DATE_FORMAT);
-        $this->closedAt = $this->updatedAt;
-        $this->error = $error;
-
-        if ($result !== null) {
-            $this->result = $result;
-        }
-
-        return $this;
+        return $this->close(self::STATUS_FAILED, $result, $error);
     }
 
     /**
@@ -131,27 +111,40 @@ class Job
         $job->status = (string) $row['status'];
         $job->createdAt = (string) $row['created_at'];
         $job->updatedAt = (string) $row['updated_at'];
-        $job->closedAt = $row['closed_at'] ?? null;
-        $job->info = $row['info'] ?? null;
-        $job->result = $row['result'] ?? null;
-        $job->error = $row['error'] ?? null;
+        $job->closedAt = $row['closed_at'];
+        $job->info = $row['info'];
+        $job->result = $row['result'];
+        $job->error = $row['error'];
 
         return $job;
     }
 
-    public function toArray(): array
+    /**
+     * Следы прошлого прогона к открытой задаче не относятся. Info не трогаем —
+     * это заметка вызывающего, а не след прогона.
+     */
+    private function reopen(string $status): self
     {
-        return [
-            'id' => $this->id,
-            'source' => $this->source,
-            'payload' => $this->payload,
-            'status' => $this->status,
-            'created_at' => $this->createdAt,
-            'updated_at' => $this->updatedAt,
-            'closed_at' => $this->closedAt,
-            'info' => $this->info,
-            'result' => $this->result,
-            'error' => $this->error,
-        ];
+        $this->status = $status;
+        $this->updatedAt = gmdate(self::DATE_FORMAT);
+        $this->closedAt = null;
+        $this->result = null;
+        $this->error = null;
+
+        return $this;
+    }
+
+    private function close(string $status, ?string $result, ?string $error): self
+    {
+        $this->status = $status;
+        $this->updatedAt = gmdate(self::DATE_FORMAT);
+        $this->closedAt = $this->updatedAt;
+        $this->error = $error;
+
+        if ($result !== null) {
+            $this->result = $result;
+        }
+
+        return $this;
     }
 }

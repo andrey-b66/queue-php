@@ -29,6 +29,10 @@
     "scripts": {
         "cs-check": "php-cs-fixer fix --dry-run --diff --rules=@PSR12 --using-cache=no .",
         "cs-fix": "php-cs-fixer fix --rules=@PSR12 --using-cache=no .",
-        "test": "phpunit"
+        "test": "phpunit",
+        "demo": [
+            "Composer\\Config::disableProcessTimeout",
+            "php -S localhost:8000 -t tests/demo/public"
+        ]
     }
 }

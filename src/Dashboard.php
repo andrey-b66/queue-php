@@ -195,7 +195,7 @@ final class Dashboard
 
         $page = max(1, (int) $this->stringParam($query, 'page'));
         $status = $this->stringParam($query, 'status');
-        $source = $this->stringParam($query, 'source');
+        $sources = $this->listParam($query, 'source');
         $createdFrom = $this->normalizeDate($this->stringParam($query, 'created_from'));
         $createdTo = $this->normalizeDate($this->stringParam($query, 'created_to'));
         // Текст для поиска в полях задачи: параметр search_<поле> => текст
@@ -217,8 +217,10 @@ final class Dashboard
         // и добавляется в список, чтобы форма показывала то, по чему отобраны задачи
         $availableSources = $this->queue->listSources();
 
-        if ($source !== '' && !in_array($source, $availableSources, true)) {
-            $availableSources[] = $source;
+        foreach ($sources as $source) {
+            if (!in_array($source, $availableSources, true)) {
+                $availableSources[] = $source;
+            }
         }
 
         // Задача должна подходить под все заданные условия. В форме выбирают дни в поясе
@@ -226,7 +228,7 @@ final class Dashboard
         // и переводим в UTC. Любую из дат можно не задавать
         $filter = [
             'status' => $status,
-            'source' => $source,
+            'source' => $sources,
             'createdFrom' => $createdFrom === '' ? '' : $this->toUtc($createdFrom . ' 00:00:00'),
             'createdTo' => $createdTo === '' ? '' : $this->toUtc($createdTo . ' 23:59:59'),
         ];
@@ -243,7 +245,7 @@ final class Dashboard
         // Значения по умолчанию пустые: в URL и форму они не попадают
         $state = [
             'status' => $status,
-            'source' => $source,
+            'source' => $sources,
             'created_from' => $createdFrom,
             'created_to' => $createdTo,
         ] + $searches + [
@@ -294,6 +296,28 @@ final class Dashboard
     }
 
     /**
+     * Параметр запроса списком (name[]=...), без пустых значений. Строка — список из неё одной:
+     * так работают и ссылки с одним значением.
+     *
+     * @param array<string, mixed> $params
+     * @return string[]
+     */
+    private function listParam(array $params, string $name): array
+    {
+        $value = $params[$name] ?? [];
+        $values = [];
+
+        foreach (is_array($value) ? $value : [$value] as $item) {
+            // Вложенный массив (name[][]=...) — всё равно что значения нет
+            if (is_scalar($item) && (string) $item !== '') {
+                $values[] = (string) $item;
+            }
+        }
+
+        return $values;
+    }
+
+    /**
      * @param mixed $value
      */
     private function escape($value): string
@@ -308,7 +332,7 @@ final class Dashboard
     private function withoutEmpty(array $params): array
     {
         foreach ($params as $key => $value) {
-            if ($value === '') {
+            if ($value === '' || $value === []) {
                 unset($params[$key]);
             }
         }
@@ -317,7 +341,7 @@ final class Dashboard
     }
 
     /**
-     * Скрытые поля формы; пустые значения пропускаются.
+     * Скрытые поля формы; пустые значения пропускаются. Список — полем name[] на каждое значение.
      *
      * @param array<string, mixed> $fields
      */
@@ -326,8 +350,12 @@ final class Dashboard
         $html = '';
 
         foreach ($this->withoutEmpty($fields) as $name => $value) {
-            $html .= '<input type="hidden" name="' . $this->escape($name)
-                . '" value="' . $this->escape($value) . '">' . "\n";
+            $fieldName = is_array($value) ? "{$name}[]" : $name;
+
+            foreach ((array) $value as $item) {
+                $html .= '<input type="hidden" name="' . $this->escape($fieldName)
+                    . '" value="' . $this->escape($item) . '">' . "\n";
+            }
         }
 
         return $html;

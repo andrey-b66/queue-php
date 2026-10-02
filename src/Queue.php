@@ -89,7 +89,9 @@ class Queue
      * тоже значат «условие не задано». Пустой фильтр — все задачи.
      *
      * - `status`          — статус, точное совпадение;
-     * - `source`          — источник, точное совпадение;
+     * - `source`          — источник, точное совпадение. Можно передать список источников:
+     *                       подойдёт любой из них. Пустые значения в списке не учитываются,
+     *                       пустой список — условие не задано;
      * - `createdFrom`     — created_at не раньше, включительно;
      * - `createdTo`       — created_at не позже, включительно;
      * - `infoContains`, `resultContains`, `errorContains` — в info, result или error есть этот текст;
@@ -108,7 +110,7 @@ class Queue
      * при листании ни одна не теряется и не повторяется. Пустой closed_at SQLite считает
      * меньше любой даты.
      *
-     * @param array<string, string|null> $filter
+     * @param array<string, string|string[]|null> $filter
      * @return Job[]
      * @throws \InvalidArgumentException если в фильтре неизвестное условие, неизвестное поле
      *                                   сортировки, page или limit меньше 1
@@ -150,7 +152,7 @@ class Queue
     /**
      * Сколько задач подходит под фильтр. Условия — как у find().
      *
-     * @param array<string, string|null> $filter
+     * @param array<string, string|string[]|null> $filter
      * @throws \InvalidArgumentException если в фильтре неизвестное условие
      */
     public function count(array $filter = []): int
@@ -338,7 +340,7 @@ class Queue
      * Фильтр find() и count() — в SQL: ' WHERE ...' (пустая строка, если условий нет)
      * и параметры к нему. Условия описаны у find().
      *
-     * @param array<string, string|null> $filter
+     * @param array<string, string|string[]|null> $filter
      * @return array{0: string, 1: array<string, string>}
      * @throws \InvalidArgumentException если в фильтре неизвестное условие
      */
@@ -366,6 +368,27 @@ class Queue
             // Опечатка в названии условия молча отобрала бы задачи без этого условия
             if (!isset($conditions[$name]) && !isset($textConditions[$name])) {
                 throw new \InvalidArgumentException("Неизвестное условие фильтра: {$name}");
+            }
+
+            // Список источников: подходит задача с любым из них
+            if ($name === 'source' && is_array($value)) {
+                $placeholders = [];
+
+                foreach ($value as $source) {
+                    if ((string) $source === '') {
+                        continue;
+                    }
+
+                    $placeholder = ':source' . count($placeholders);
+                    $placeholders[] = $placeholder;
+                    $params[$placeholder] = (string) $source;
+                }
+
+                if ($placeholders !== []) {
+                    $where[] = 'source IN (' . implode(', ', $placeholders) . ')';
+                }
+
+                continue;
             }
 
             $value = (string) $value;

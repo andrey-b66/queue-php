@@ -10,7 +10,7 @@
  * @var string $error
  * @var string $csrfToken
  * @var string $status
- * @var string $source
+ * @var string[] $sources
  * @var string[] $availableSources
  * @var string $createdFrom
  * @var string $createdTo
@@ -77,20 +77,43 @@
                 </select>
             </div>
 
-            <div class="field">
-                <label for="source">Источник</label>
-                <select id="source" name="source">
-                    <option value="">Все источники</option>
-                    <?php foreach ($availableSources as $availableSource): ?>
-                        <option
-                            value="<?= $this->escape($availableSource) ?>"
-                            <?= $source === $availableSource ? 'selected' : '' ?>
-                        >
-                            <?= $this->escape($availableSource) ?>
-                        </option>
-                    <?php endforeach; ?>
-                </select>
-            </div>
+            <?php
+            // Источников можно отметить несколько, а у select флажков нет — поэтому details.
+            // В свёрнутом виде видны отмеченные источники; не отмечено ничего — все источники
+            ?>
+            <fieldset class="field">
+                <legend>Источник</legend>
+
+                <details class="multiselect">
+                    <summary><?= $this->escape($sources === [] ? 'Все источники' : implode(', ', $sources)) ?></summary>
+
+                    <div class="multiselect-options">
+                        <?php
+                        // Как пункт «Все источники» прежнего select: снимает отметки с источников.
+                        // Без name — в адрес не попадает
+                        ?>
+                        <label class="multiselect-all">
+                            <input
+                                type="checkbox"
+                                <?= $sources === [] ? 'checked' : '' ?>
+                            >
+                            Все источники
+                        </label>
+
+                        <?php foreach ($availableSources as $availableSource): ?>
+                            <label>
+                                <input
+                                    type="checkbox"
+                                    name="source[]"
+                                    value="<?= $this->escape($availableSource) ?>"
+                                    <?= in_array($availableSource, $sources, true) ? 'checked' : '' ?>
+                                >
+                                <?= $this->escape($availableSource) ?>
+                            </label>
+                        <?php endforeach; ?>
+                    </div>
+                </details>
+            </fieldset>
 
             <div class="field">
                 <label for="created_from">Создана с (<?= $this->escape($this->timezone->getName()) ?>)</label>
@@ -372,6 +395,51 @@
             box.addEventListener('change', sync);
         });
 
+        sync();
+    })();
+
+    // Список источников: подпись повторяет отмеченные, клик мимо списка сворачивает его
+    (function () {
+        var list = document.querySelector('.multiselect');
+        var summary = list.querySelector('summary');
+        var allSources = list.querySelector('.multiselect-all input');
+        var boxes = list.querySelectorAll('[name="source[]"]');
+
+        // «Все источники» отмечен, пока не отмечен ни один источник
+        function sync() {
+            var checked = [];
+
+            boxes.forEach(function (box) {
+                if (box.checked) {
+                    checked.push(box.value);
+                }
+            });
+
+            allSources.checked = checked.length === 0;
+            summary.textContent = checked.length > 0 ? checked.join(', ') : 'Все источники';
+        }
+
+        // «Все источники» снимает отметки с источников. Снять его самого нельзя: sync() вернёт
+        // отметку, ведь без отмеченных источников и так показываются все
+        allSources.addEventListener('change', function () {
+            boxes.forEach(function (box) {
+                box.checked = false;
+            });
+
+            sync();
+        });
+
+        boxes.forEach(function (box) {
+            box.addEventListener('change', sync);
+        });
+
+        document.addEventListener('click', function (event) {
+            if (!list.contains(event.target)) {
+                list.open = false;
+            }
+        });
+
+        // Браузер мог восстановить отметки при возврате на страницу
         sync();
     })();
 </script>

@@ -91,7 +91,7 @@ final class DashboardTest extends TestCase
 
         $response = $this->get([
             'status' => 'failed',
-            'source' => 'crm',
+            'source' => ['crm'],
             'created_from' => '2000-01-01',
             'created_to' => '',
             'search_info' => '',
@@ -103,7 +103,7 @@ final class DashboardTest extends TestCase
         $this->assertSame(['1'], $this->shownIds($response));
         $this->assertStringContainsString('Показано задач: 1 из 1.', $response['body']);
         $this->assertMatchesRegularExpression('/<option\s+value="failed"\s+selected\s*>/', $response['body']);
-        $this->assertMatchesRegularExpression('/<option\s+value="crm"\s+selected\s*>/', $response['body']);
+        $this->assertMatchesRegularExpression('/name="source\[\]"\s+value="crm"\s+checked\s*>/', $response['body']);
         $this->assertMatchesRegularExpression('/name="created_from"\s+value="2000-01-01"/', $response['body']);
         $this->assertMatchesRegularExpression('/name="search_payload"\s+value="ivan@"/', $response['body']);
         $this->assertStringContainsString('<a class="button-link secondary" href="?">', $response['body']);
@@ -159,20 +159,49 @@ final class DashboardTest extends TestCase
         }
     }
 
-    /** Источник, задач которого в базе уже нет, остаётся выбранным в форме, список пуст */
+    /**
+     * Источников можно отметить несколько: в списке задачи любого из них, в форме они отмечены
+     * и перечислены в свёрнутом списке, полоса листания передаёт их дальше. «Все источники»
+     * отмечен, только пока не отмечен ни один источник. Ссылка с одним источником строкой
+     * (source=crm) тоже работает.
+     */
+    public function testSeveralSourcesCanBeChecked(): void
+    {
+        $this->queue->push(Job::create('crm', '{}'));
+        $this->queue->push(Job::create('shop', '{}'));
+        $this->queue->push(Job::create('mail', '{}'));
+
+        $response = $this->get(['source' => ['crm', 'mail']]);
+
+        $this->assertSame(['3', '1'], $this->shownIds($response));
+        $this->assertMatchesRegularExpression('/name="source\[\]"\s+value="crm"\s+checked\s*>/', $response['body']);
+        $this->assertMatchesRegularExpression('/name="source\[\]"\s+value="mail"\s+checked\s*>/', $response['body']);
+        $this->assertMatchesRegularExpression('/name="source\[\]"\s+value="shop"\s*>/', $response['body']);
+        $this->assertStringContainsString('<summary>crm, mail</summary>', $response['body']);
+        $this->assertMatchesRegularExpression('/class="multiselect-all">\s*<input\s+type="checkbox"\s*>/', $response['body']);
+        $this->assertSame(2, substr_count($response['body'], '<input type="hidden" name="source[]" value="mail">'));
+
+        $this->assertMatchesRegularExpression(
+            '/class="multiselect-all">\s*<input\s+type="checkbox"\s+checked\s*>/',
+            $this->get()['body']
+        );
+        $this->assertSame(['1'], $this->shownIds($this->get(['source' => 'crm'])));
+    }
+
+    /** Источник, задач которого в базе уже нет, остаётся отмеченным в форме, список пуст */
     public function testSourceMissingFromBaseStaysInFilter(): void
     {
         $this->queue->push(Job::create('crm', '{}'));
 
-        $response = $this->get(['source' => 'old-crm']);
+        $response = $this->get(['source' => ['old-crm']]);
 
         $this->assertStringContainsString('Показано задач: 0 из 0.', $response['body']);
-        $this->assertMatchesRegularExpression('/<option\s+value="old-crm"\s+selected\s*>/', $response['body']);
+        $this->assertMatchesRegularExpression('/name="source\[\]"\s+value="old-crm"\s+checked\s*>/', $response['body']);
     }
 
     /**
      * Неверные параметры адреса не применяются и не ломают страницу: несуществующая дата и не дата,
-     * массив вместо строки, неизвестные поле сортировки и размер страницы.
+     * массив вместо строки, вложенный массив в списке, неизвестные поле сортировки и размер страницы.
      */
     public function testInvalidQueryParametersAreIgnored(): void
     {
@@ -185,6 +214,7 @@ final class DashboardTest extends TestCase
             'created_from' => '2026-02-30',
             'created_to' => 'завтра',
             'status' => ['new'],
+            'source' => [['shop']],
             'search_error' => ['x'],
             'ok' => ['x'],
             'sort_by' => 'payload',
@@ -211,24 +241,27 @@ final class DashboardTest extends TestCase
 
         $this->queue->push(Job::create('shop', '{}'));
 
-        $firstPage = $this->get(['source' => 'crm', 'limit' => '25', 'sort' => 'asc']);
+        $firstPage = $this->get(['source' => ['crm'], 'limit' => '25', 'sort' => 'asc']);
 
         $this->assertSame(implode(',', range(1, 25)), implode(',', $this->shownIds($firstPage)));
         $this->assertSame(2, substr_count($firstPage['body'], 'Страница 1 из 2.'));
         $this->assertSame(2, substr_count($firstPage['body'], 'Показано задач: 25 из 30.'));
-        $this->assertSame(2, substr_count($firstPage['body'], 'href="?source=crm&amp;limit=25&amp;sort=asc&amp;page=2"'));
+        $this->assertSame(
+            2,
+            substr_count($firstPage['body'], 'href="?source%5B0%5D=crm&amp;limit=25&amp;sort=asc&amp;page=2"')
+        );
 
         // Формы действий отправляются на адрес текущего списка — после действия вернёмся на него
         $this->assertStringContainsString(
-            '<form class="jobs-form" method="post" action="?source=crm&amp;limit=25&amp;sort=asc&amp;page=1">',
+            '<form class="jobs-form" method="post" action="?source%5B0%5D=crm&amp;limit=25&amp;sort=asc&amp;page=1">',
             $firstPage['body']
         );
         $this->assertMatchesRegularExpression(
-            '/<form\s+class="cleanup-form"\s+method="post"\s+action="\?source=crm&amp;limit=25&amp;sort=asc"/',
+            '/<form\s+class="cleanup-form"\s+method="post"\s+action="\?source%5B0%5D=crm&amp;limit=25&amp;sort=asc"/',
             $firstPage['body']
         );
 
-        $secondPage = $this->get(['source' => 'crm', 'limit' => '25', 'sort' => 'asc', 'page' => '2']);
+        $secondPage = $this->get(['source' => ['crm'], 'limit' => '25', 'sort' => 'asc', 'page' => '2']);
 
         $this->assertSame(implode(',', range(26, 30)), implode(',', $this->shownIds($secondPage)));
     }

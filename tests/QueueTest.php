@@ -143,6 +143,26 @@ final class QueueTest extends TestCase
     }
 
     /**
+     * Условие source списком: подходит задача с любым источником из него. Пустые значения в списке
+     * не учитываются, пустой список — условие не задано.
+     */
+    public function testFindBySourceList(): void
+    {
+        foreach (['crm', 'shop', 'mail', ''] as $source) {
+            $this->queue->push(Job::create($source, '{}'));
+        }
+
+        foreach ([
+            [['crm', 'mail'], [1, 3]],
+            [['shop', ''], [2]],
+            [[], [1, 2, 3, 4]],
+        ] as [$sources, $ids]) {
+            $this->assertSame($ids, array_column($this->queue->find(['source' => $sources]), 'id'), implode(',', $sources));
+            $this->assertSame(count($ids), $this->queue->count(['source' => $sources]));
+        }
+    }
+
+    /**
      * find() сортирует по created_at, updated_at и closed_at — каждое поле по своей колонке, в обе
      * стороны. Пустой closed_at меньше любой даты.
      */

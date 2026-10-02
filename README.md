@@ -112,6 +112,7 @@ $queue->findById(42);                                         // ?Job
 $queue->find(['status' => Job::STATUS_FAILED], 1, 20, true);  // Job[]: 20 последних упавших
 $queue->count(['status' => Job::STATUS_FAILED]);              // сколько всего упавших
 $queue->find(['errorContains' => 'Таймаут']);                 // Job[]: в ошибке есть «Таймаут»
+$queue->find(['source' => ['crm', 'mail']]);                  // Job[]: из crm или mail
 $queue->find([], 1, 20, true, 'closedAt');                    // Job[]: 20 последних закрытых
 $queue->listSources();                                        // string[]: источники по алфавиту
 ```
@@ -122,7 +123,7 @@ $queue->listSources();                                        // string[]: ис�
 | Условие | Что проверяет |
 |---|---|
 | `status` | статус, точное совпадение |
-| `source` | источник, точное совпадение |
+| `source` | источник, точное совпадение; или список источников — любой из них, пустой список — условие не задано |
 | `createdFrom`, `createdTo` | `created_at` не раньше и не позже, включительно |
 | `infoContains`, `resultContains`, `errorContains` | текст в `info`, `result` или `error` |
 | `payloadContains` | текст в `payload` |
@@ -173,9 +174,9 @@ $queue = new Queue(__DIR__ . '/../storage/jobs.sqlite');
 (new Dashboard($queue))->handle();
 ```
 
-Фильтры по статусу, источнику, периоду и тексту в info, result, error и payload в любом сочетании;
-сортировка по id, created_at, updated_at и closed_at кликом по заголовку столбца; постраничный вывод,
-массовая смена статуса и удаление, очистка старых закрытых задач.
+Фильтры по статусу, источникам (можно отметить несколько), периоду и тексту в info, result, error
+и payload в любом сочетании; сортировка по id, created_at, updated_at и closed_at кликом по заголовку
+столбца; постраничный вывод, массовая смена статуса и удаление, очистка старых закрытых задач.
 Стили встроены в страницу, отдельно публиковать ничего не нужно; в браузере должен работать
 JavaScript.
 
